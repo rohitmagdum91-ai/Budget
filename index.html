@@ -112,7 +112,7 @@ var D = null;
 var S = { tab: 'home', part: 'regular', month: '', year: '', unlocked: false, showMoney: false };
 var GROUPS = ['RD', 'FD', 'Gold', 'MF', 'Stock', 'Cash', 'Others'];
 var GROUP_INFO = { RD: ['Recurring deposit', 'Yearly RD target · matures to FD'], FD: ['Fixed deposit', 'Matured RDs + lump sums'], Gold: ['Gold', 'Note grams in the note'], MF: ['Mutual funds (SIP)', 'Monthly SIP'], Stock: ['Stocks', 'Invested amount'], Cash: ['Cash', 'Kept aside in savings'], Others: ['Others (PF, SSY, policies)', 'PF, SSY and policies'] };
-var YEARS = ['2027', '2028', '2029', '2030', '2031'];
+var YEARS = ['2026', '2027', '2028', '2029', '2030', '2031'];
 var MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
 function $(id){ return document.getElementById(id); }
@@ -164,7 +164,7 @@ function setupScreen(err){
     '<label>Who uses this phone?<select id="s-user"><option value="">Choose…</option><option' + (c.user === 'Rohit' ? ' selected' : '') + '>Rohit</option><option' + (c.user === 'Anjali' ? ' selected' : '') + '>Anjali</option></select></label>' +
     '<button class="btn" data-act="connect">Connect</button></div>';
 }
-function setData(d){ D = d; if (!S.month) S.month = d.today.slice(0, 7); if (!S.year) S.year = (d.today.slice(0,4) < '2027') ? '2027' : d.today.slice(0,4); closeModal(); render(); }
+function setData(d){ D = d; if (!S.month) S.month = d.today.slice(0, 7); if (!S.year) S.year = YEARS.indexOf(d.today.slice(0,4)) >= 0 ? d.today.slice(0,4) : '2026'; closeModal(); render(); }
 function load(){ call('getData', [], 'Loading…', function(d){ $('nav').classList.remove('hidden'); $('monthSel').classList.remove('hidden'); setData(d); }); }
 
 /* ---------- data helpers ---------- */
@@ -309,10 +309,10 @@ function goalsHtml(){
   var tg = D.targets[yi] || [0,0,0,0,0,0,0];
   var achBy = function(g, yy){ return sum(D.entries.filter(function(e){ return e.year === yy && groupOf(e.cat) === g; }), function(e){ return e.amt; }); };
   var totT = sum(tg), totA = sum(GROUPS, function(g){ return achBy(g, y); });
-  var h = '<div class="chips" role="group" aria-label="Year">' + YEARS.map(function(v){ return '<button class="chip ' + (v === y ? 'on' : '') + '" data-act="year" data-v="' + v + '" aria-pressed="' + (v === y) + '">' + v + '</button>'; }).join('') + '</div>';
-  h += '<div class="hero"><div class="lab">Total target for ' + y + '</div><div style="font-size:26px;font-weight:700">' + fmt(totT) + '</div><div class="grid2" style="font-size:12px;color:#D5F0EC"><div>Achieved<div style="font-size:15px;font-weight:700;color:#fff">' + fmt(totA) + '</div></div><div>Still to save<div style="font-size:15px;font-weight:700;color:#fff">' + fmt(Math.max(0, totT - totA)) + '</div></div></div>' +
+  var h = '<div class="chips" role="group" aria-label="Year">' + YEARS.map(function(v){ return '<button class="chip ' + (v === y ? 'on' : '') + '" data-act="year" data-v="' + v + '" aria-pressed="' + (v === y) + '">' + (v === '2026' ? 'Dec 2026' : v) + '</button>'; }).join('') + '</div>';
+  h += '<div class="hero"><div class="lab">Total target for ' + (y === '2026' ? 'Dec 2026' : y) + '</div><div style="font-size:26px;font-weight:700">' + fmt(totT) + '</div><div class="grid2" style="font-size:12px;color:#D5F0EC"><div>Achieved<div style="font-size:15px;font-weight:700;color:#fff">' + fmt(totA) + '</div></div><div>Still to save<div style="font-size:15px;font-weight:700;color:#fff">' + fmt(Math.max(0, totT - totA)) + '</div></div></div>' +
     '<div class="bar" style="background:#2C8E86"><i style="background:#fff;width:' + Math.min(100, pct(totA, totT)) + '%"></i></div></div>';
-  h += '<div class="sec" style="align-items:center"><h2>' + y + ' targets</h2><button class="link" data-act="targets">Edit targets</button></div>';
+  h += '<div class="sec" style="align-items:center"><h2>' + (y === '2026' ? 'Dec 2026' : y) + ' targets</h2><button class="link" data-act="targets">Edit targets</button></div>';
   GROUPS.forEach(function(g, gi){
     var a = achBy(g, y), t = tg[gi], info = GROUP_INFO[g];
     h += '<div class="card" style="display:flex;flex-direction:column;gap:8px"><div class="row" style="justify-content:flex-start"><div class="ic">' + (g === 'Others' ? 'OTH' : g === 'Stock' ? 'STK' : g === 'Gold' ? 'AU' : g === 'Cash' ? '₹' : g) + '</div><div style="flex:1"><div style="font-size:15px;font-weight:600">' + info[0] + '</div><div class="sub">' + info[1] + '</div></div>' +
@@ -324,7 +324,7 @@ function goalsHtml(){
   YEARS.forEach(function(yy, i){
     var row = D.targets[i] || [], rt = sum(row), ra = sum(GROUPS, function(g){ return achBy(g, yy); });
     gT += rt; gA += ra;
-    h += '<tr><td><b>' + yy + '</b></td>' + GROUPS.map(function(g, gi){ return '<td>' + (row[gi] ? short(row[gi]) : '—') + '</td>'; }).join('') + '<td><b>' + short(rt) + '</b></td></tr>';
+    h += '<tr><td><b>' + (yy === '2026' ? 'Dec 26' : yy) + '</b></td>' + GROUPS.map(function(g, gi){ return '<td>' + (row[gi] ? short(row[gi]) : '—') + '</td>'; }).join('') + '<td><b>' + short(rt) + '</b></td></tr>';
   });
   h += '</table></div>';
   // chain
@@ -332,7 +332,7 @@ function goalsHtml(){
     '<button class="btn ghost" data-act="move" data-from="RD" data-to="FD">Move RD → FD</button><button class="btn plain" data-act="move" data-from="FD" data-to="Gold">Move FD → Gold</button></div>';
   // 5-year
   var all5 = sum(GROUPS, function(g){ return sum(YEARS, function(yy){ return achBy(g, yy); }); });
-  h += '<h2 style="margin:4px 4px 0">5-year total (2027–2031)</h2><div class="dark"><div class="row"><div style="font-size:13px;color:#C9D3CF">Total target</div><div style="font-size:13px;font-weight:600;color:#9FE0D6">' + pct(all5, gT) + '% achieved</div></div>' +
+  h += '<h2 style="margin:4px 4px 0">Total (Dec 2026 – 2031)</h2><div class="dark"><div class="row"><div style="font-size:13px;color:#C9D3CF">Total target</div><div style="font-size:13px;font-weight:600;color:#9FE0D6">' + pct(all5, gT) + '% achieved</div></div>' +
     '<div style="font-size:28px;font-weight:700">' + fmt(gT) + '</div><div class="bar" style="background:#34403C;height:10px"><i style="background:#2DD4BF;width:' + Math.min(100, pct(all5, gT)) + '%"></i></div>' +
     '<div class="grid2" style="font-size:12px;color:#C9D3CF"><div>Achieved so far<div style="font-size:16px;font-weight:700;color:#fff">' + fmt(all5) + '</div></div><div>Still to save<div style="font-size:16px;font-weight:700;color:#fff">' + fmt(Math.max(0, gT - all5)) + '</div></div></div>' +
     '<div class="grid3" style="border-top:1px solid #34403C;padding-top:10px;font-size:12px;color:#C9D3CF">' + GROUPS.map(function(g, gi){
@@ -420,7 +420,7 @@ function catsModal(){
 }
 function targetsModal(){
   var h = head('Edit targets (₹)') + '<div class="tg"><div></div>' + GROUPS.map(function(g){ return '<div class="sub" style="font-weight:700">' + g + '</div>'; }).join('');
-  YEARS.forEach(function(y, i){ h += '<div style="font-weight:700">' + y + '</div>' + GROUPS.map(function(g, gi){ return '<input type="number" inputmode="decimal" aria-label="' + g + ' ' + y + '" id="t-' + i + '-' + gi + '" value="' + ((D.targets[i] || [])[gi] || '') + '">'; }).join(''); });
+  YEARS.forEach(function(y, i){ h += '<div style="font-weight:700">' + (y === '2026' ? 'Dec 26' : y) + '</div>' + GROUPS.map(function(g, gi){ return '<input type="number" inputmode="decimal" aria-label="' + g + ' ' + y + '" id="t-' + i + '-' + gi + '" value="' + ((D.targets[i] || [])[gi] || '') + '">'; }).join(''); });
   openModal(h + '</div><div class="small">Swipe sideways to see all columns.</div><button class="btn" data-act="save-targets">Save targets</button>');
 }
 function recentModal(){
