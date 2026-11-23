@@ -278,6 +278,18 @@ function planHtml(){
   return h;
 }
 
+/* ---------- due dates for yearly payments and renewals ---------- */
+function nextDue(abbr, m){
+  var mi = MON.indexOf(abbr.slice(0, 3)), y = Number(m.slice(0, 4)), cm = Number(m.slice(5)) - 1;
+  if (mi < 0) return m;
+  if (mi < cm) y++;
+  return y + '-' + String(mi + 1).padStart(2, '0');
+}
+function dueLabel(key){ return MON[Number(key.slice(5)) - 1] + ' ' + key.slice(0, 4); }
+function duePaid(name, key, label){
+  return D.entries.filter(function(e){ return e.cat === name && ((e.note || '').indexOf('For ' + label) >= 0 || e.month === key); })[0] || null;
+}
+
 /* ---------- salary-day quick add ---------- */
 var FIXED_KINDS = ['Income', 'EMI', 'Set-aside', 'Saving'];
 function fixedItems(m){
@@ -422,10 +434,13 @@ function plannerHtml(){
   var order = MON.slice();
   var rows = [];
   yearlyCats.forEach(function(c){ c.due.split(',').forEach(function(d){ d = d.trim(); if (d) rows.push({ mon: d, c: c, amt: c.yearly / c.due.split(',').length }); }); });
-  rows.sort(function(a, b){ return order.indexOf(a.mon) - order.indexOf(b.mon); });
+  rows.forEach(function(r){ r.key = nextDue(r.mon, m); });
+  rows.sort(function(a, b){ return a.key < b.key ? -1 : a.key > b.key ? 1 : 0; });
   rows.forEach(function(r){
-    var paid = paidYear(r.c.name, yr), now = r.mon === monthAbbr(m);
-    h += '<div class="li"><div class="mon ' + (now ? 'now' : '') + '">' + r.mon.toUpperCase() + '</div><div style="flex:1;font-size:14px">' + esc(r.c.name) + '<div class="sub">' + (paid >= r.c.yearly ? 'Paid ' + yr : paid > 0 ? 'Part paid ' + yr : 'Not paid ' + yr) + '</div></div><b style="font-size:14px">' + fmt(r.amt) + '</b></div>';
+    var label = dueLabel(r.key), pe = duePaid(r.c.name, r.key, label), now = r.key === m;
+    var st = pe ? '<span style="color:var(--teal);font-weight:600">✓ Paid ' + fmt(pe.amt) + ' on ' + pe.date.slice(8) + ' ' + MON[Number(pe.date.slice(5, 7)) - 1] + '</span>' : (now ? '<span style="color:var(--warmink);font-weight:600">Due this month</span>' : 'Due ' + label);
+    h += '<button class="li" data-act="pay-due" data-cat="' + esc(r.c.name) + '" data-amt="' + Math.round(r.amt) + '" data-label="' + label + '" data-key="' + r.key + '" style="width:100%;border:0;border-bottom:1px solid #EEF2F0;background:transparent;text-align:left;cursor:pointer;font:inherit;color:inherit">' +
+      '<div class="mon ' + (now && !pe ? 'now' : '') + '">' + r.mon.toUpperCase() + '</div><div style="flex:1;font-size:14px">' + esc(r.c.name) + '<div class="sub">' + st + '</div></div><b style="font-size:14px">' + fmt(r.amt) + '</b></button>';
   });
   h += '<div class="row" style="padding:12px 0;font-weight:700;font-size:14px"><div>Total per year</div><div>' + fmt(sum(yearlyCats, function(c){ return c.yearly; })) + '</div></div></div>';
 
@@ -435,9 +450,15 @@ function plannerHtml(){
   var rBal = rStart + allTime('Transfer to renewal fund') - allTime('Renewal interest paid');
   h += '<div class="sec"><h2>Renewal interest fund</h2><div class="sub">' + fmt(tR ? tR.monthly : 0) + ' / month</div></div>';
   h += '<div class="card" style="padding:4px 16px"><div class="li"><div style="flex:1"><div class="sub">Fund balance</div><div class="big">' + fmt(rBal) + '</div></div><button class="link" data-act="add" data-cat="Transfer to renewal fund" data-amt="' + (tR ? tR.monthly : 0) + '">+ Transfer</button></div>';
-  D.loans.filter(function(l){ return l.renewal; }).forEach(function(l){
-    h += '<div class="li"><div class="mon">' + esc(l.renewal.slice(0, 3).toUpperCase()) + '</div><div style="flex:1;font-size:14px">' + esc(l.name) + '<div class="sub">' + short(l.outstanding) + ' · interest ~' + fmt(l.outstanding * l.rate) + '</div></div><button class="link" data-act="add" data-cat="Renewal interest paid" data-amt="' + Math.round(l.outstanding * l.rate) + '">Pay</button></div>';
+  D.loans.filter(function(l){ return l.renewal; }).map(function(l){ return { l: l, key: nextDue(l.renewal.slice(0, 3), m) }; })
+    .sort(function(a, b){ return a.key < b.key ? -1 : 1; }).forEach(function(x){
+    var l = x.l, label = dueLabel(x.key), tag = l.name + ' interest ' + label;
+    var pe = D.entries.filter(function(e){ return e.cat === 'Renewal interest paid' && (e.note || '').indexOf(tag) >= 0; })[0];
+    h += '<div class="li"><div class="mon">' + esc(l.renewal.slice(0, 3).toUpperCase()) + '</div><div style="flex:1;font-size:14px">' + esc(l.name) + '<div class="sub">' + short(l.outstanding) + ' · interest ~' + fmt(l.outstanding * l.rate) + ' · ' +
+      (pe ? '<span style="color:var(--teal);font-weight:600">✓ Paid ' + fmt(pe.amt) + '</span>' : 'due ' + label) + '</div></div>' +
+      (pe ? '' : '<button class="link" data-act="pay-due" data-cat="Renewal interest paid" data-amt="' + Math.round(l.outstanding * l.rate) + '" data-label="' + label + '" data-note="' + esc(tag) + '">Pay</button>') + '</div>';
   });
+  if (rBal < 0) h += '<div class="small" style="padding:8px 0 12px">The balance is below zero because more interest was paid than transferred in. Add the monthly ₹' + (tR ? tR.monthly.toLocaleString('en-IN') : '5,125') + ' transfers (Salary day quick add does this).</div>';
   h += '</div>';
 
   // close month
@@ -544,7 +565,7 @@ function addModal(opts){
     '<label>Category<select id="f-cat">' + catOptions(filter, sel) + '</select></label>' +
     '<label>Amount (₹)<input id="f-amt" type="number" inputmode="decimal" placeholder="0" value="' + (amt || '') + '"></label>' +
     '<label>Date<input id="f-date" type="date" value="' + D.today + '"></label>' +
-    '<label>Note (optional)<input id="f-note" type="text" placeholder="e.g. milk, petrol, fees"></label>' +
+    '<label>Note (optional)<input id="f-note" type="text" placeholder="e.g. milk, petrol, fees" value="' + esc(opts.note || '') + '"></label>' +
     '<button class="btn" data-act="save-entry">Save</button>');
 }
 function pinModal(next){
@@ -617,6 +638,12 @@ document.addEventListener('click', function(ev){
   if (a === 'connection') { if (confirm('Change the app link, key or user on this phone?')) { closeModal(); setupScreen(); } return; }
   if (!D) return;
   if (a === 'add') { addModal({ cat: t.dataset.cat, group: t.dataset.group, amt: t.dataset.amt }); return; }
+  if (a === 'pay-due') {
+    var ex = t.dataset.note ? null : duePaid(t.dataset.cat, t.dataset.key, t.dataset.label);
+    if (ex) { toast('Already paid on ' + ex.date + '. Delete it in More › Recent entries to change it.'); return; }
+    addModal({ cat: t.dataset.cat, amt: t.dataset.amt, note: t.dataset.note || ('For ' + t.dataset.label) });
+    return;
+  }
   if (a === 'income') { needPin(function(){ addModal({ income: true }); }); return; }
   if (a === 'money') { if (S.showMoney) { S.showMoney = false; render(); } else needPin(function(){ S.unlocked = true; S.showMoney = true; closeModal(); render(); }); return; }
   if (a === 'check-pin') {
