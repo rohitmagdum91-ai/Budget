@@ -120,7 +120,7 @@ function $(id){ return document.getElementById(id); }
 function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 function fmt(n){ var v = Math.round(Number(n) || 0); return (v < 0 ? '-₹' : '₹') + Math.abs(v).toLocaleString('en-IN'); }
 function short(n){ n = Number(n)||0; if (Math.abs(n) >= 100000) return '₹' + (n/100000).toFixed(n % 100000 ? 2 : 0) + 'L'; if (Math.abs(n) >= 1000) return '₹' + (n/1000).toFixed(n % 1000 ? 1 : 0) + 'k'; return fmt(n); }
-function sum(a, f){ return a.reduce(function(s, x){ return s + (f ? f(x) : x); }, 0); }
+function sum(a, f){ return a.reduce(function(s, x, i){ return s + (f ? f(x, i) : x); }, 0); }
 function toast(t){ var el = $('toast'); el.textContent = t; el.classList.remove('hidden'); clearTimeout(toast._t); toast._t = setTimeout(function(){ el.classList.add('hidden'); }, 3000); }
 function busy(on, t){ $('busy').textContent = t || 'Saving…'; $('busy').classList.toggle('hidden', !on); }
 function mask(t){ return (S.showMoney) ? t : '₹ • • • •'; }
@@ -136,7 +136,7 @@ function saveCfg(c){ CFG = c; try { localStorage.setItem('fb-cfg', JSON.stringif
 function call(fn, args, msg, after, cfg){
   var c = cfg || CFG;
   if (!c) { setupScreen(); return; }
-  busy(true, msg);
+  if (msg) busy(true, msg);
   fetch(c.url, { method: 'POST', redirect: 'follow', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
     body: JSON.stringify({ key: c.key, user: c.user, fn: fn, args: args || [] }) })
     .then(function(r){ return r.json(); })
@@ -170,7 +170,8 @@ function setupScreen(err){
     '<label>Who uses this phone?<select id="s-user"><option value="">Choose…</option><option' + (c.user === 'Rohit' ? ' selected' : '') + '>Rohit</option><option' + (c.user === 'Anjali' ? ' selected' : '') + '>Anjali</option></select></label>' +
     '<button class="btn" data-act="connect">Connect</button></div>';
 }
-function setData(d){ D = d; if (!S.month) S.month = d.today.slice(0, 7); if (!S.year) S.year = YEARS.indexOf(d.today.slice(0,4)) >= 0 ? d.today.slice(0,4) : '2026'; closeModal(); render(); }
+var LAST_LOAD = 0;
+function setData(d){ D = d; LAST_LOAD = Date.now(); if (!S.month) S.month = d.today.slice(0, 7); if (!S.year) S.year = YEARS.indexOf(d.today.slice(0,4)) >= 0 ? d.today.slice(0,4) : '2026'; closeModal(); render(); }
 function load(){ call('getData', [], 'Loading…', function(d){ $('nav').classList.remove('hidden'); $('monthSel').classList.remove('hidden'); setData(d); }); }
 
 /* ---------- data helpers ---------- */
@@ -183,6 +184,132 @@ function kindOf(name){ var c = cat(name); return c ? c.kind : ''; }
 function groupOf(name){ var c = cat(name); return c ? c.group : ''; }
 function monthAbbr(m){ return MON[Number(m.slice(5, 7)) - 1]; }
 var PLANNED_KINDS = ['Monthly', 'EMI', 'Set-aside', 'Saving'];
+
+/* ---------- Family plan screen ---------- */
+var RATES = { RD: 0.065, FD: 0.065, Gold: 0.06, MF: 0.11, Stock: 0.11, Cash: 0.065, PF: 0.0825, Others: 0.082 };
+var PLAN_TARGET = 2500000;
+function efHave(){ var p = D.planner[0] || { start: 0 }; return p.start + allTime('Emergency fund'); }
+function groupAll(g){ return sum(D.entries.filter(function(e){ return groupOf(e.cat) === g; }), function(e){ return e.amt; }); }
+var MILESTONES = [
+  { id: 'gold', t: 'Gold loan taken, ₹5 lakh gold bought (Anjali)', due: 'Dec 2026' },
+  { id: 'buffers', t: 'Yearly + renewal fund buffers (₹44,000)', due: 'Feb 2027' },
+  { id: 'ef2', t: 'Emergency fund ₹2 lakh', due: 'Apr 2027', prog: function(){ return [efHave(), 200000]; } },
+  { id: 'fd50', t: 'FD ₹50,000', due: '2027', prog: function(){ return [groupAll('FD'), 50000]; } },
+  { id: 'sip2', t: 'Start ₹2,000 MF SIP', due: 'Jun 2027' },
+  { id: 'sbi', t: 'SBI gold loan closed', due: 'Apr 2029', prog: function(){ return [allTime('SBI gold loan repayment'), 500000]; } },
+  { id: 'axis', t: 'Axis loan closed', due: 'Jan 2030', prog: function(){ var p = D.planner[1] || { start: 0, target: 0 }; return [p.start + allTime('Axis closure fund'), p.target]; } },
+  { id: 'sip25', t: 'SIP raised to ₹25,000', due: 'Feb 2030' },
+  { id: 'ef3', t: 'Emergency fund ₹3 lakh', due: '2030', prog: function(){ return [efHave(), 300000]; } },
+  { id: 'goldend', t: 'Gold loan fully repaid', due: 'Dec 2031' }
+];
+function plannedLeft(m){
+  var inc = sum(D.cats.filter(function(c){ return c.kind === 'Income'; }), function(c){ return c.monthly; });
+  var out = sum(D.cats.filter(function(c){ return PLANNED_KINDS.indexOf(c.kind) >= 0; }), function(c){ return active(c, m) ? c.monthly : 0; });
+  return inc - out;
+}
+function projection(safe){
+  var yl = Math.max(0, (new Date('2031-12-31') - new Date(D.today)) / 31557600000);
+  var curY = D.today.slice(0, 4), tot = 0;
+  GROUPS.forEach(function(g, gi){
+    var r = RATES[g] || 0.065;
+    if (safe && (g === 'MF' || g === 'Stock')) r = 0.08;
+    if (safe && g === 'Gold') r = 0;
+    tot += groupAll(g) * Math.pow(1 + r, yl);
+    YEARS.forEach(function(y, i){
+      if (y < curY) return;
+      var t = (D.targets[i] || [])[gi] || 0;
+      if (y === curY) t = Math.max(0, t - sum(D.entries.filter(function(e){ return e.year === y && groupOf(e.cat) === g; }), function(e){ return e.amt; }));
+      var grow = y === curY ? yl / 2 : Math.max(0, 2031 - Number(y) + 0.5);
+      tot += t * Math.pow(1 + r, grow);
+    });
+  });
+  return tot;
+}
+function planHtml(){
+  var ms = D.milestones || {};
+  var saved = sum(GROUPS, function(g){ return groupAll(g); });
+  var exp = projection(false), safe = projection(true);
+  var h = '<button class="link" data-act="tab" data-v="more" style="align-self:flex-start;margin:-8px 0 -6px -8px">‹ Back to More</button>';
+  var darkCard = '<div class="dark"><div class="row"><div style="font-size:13px;color:#C9D3CF">Projected by Dec 2031</div><div style="font-size:13px;font-weight:600;color:' + (exp >= PLAN_TARGET ? '#9FE0D6' : '#FDBA74') + '">Target ' + short(PLAN_TARGET) + '</div></div>' +
+    '<div style="font-size:28px;font-weight:700">' + short(exp) + '</div>' +
+    '<div class="bar" style="background:#34403C;height:10px"><i style="background:#2DD4BF;width:' + Math.min(100, pct(saved, PLAN_TARGET)) + '%"></i></div>' +
+    '<div class="grid2" style="font-size:12px;color:#C9D3CF"><div>Saved so far<div style="font-size:16px;font-weight:700;color:#fff">' + fmt(saved) + '</div></div><div>Safe case<div style="font-size:16px;font-weight:700;color:#fff">' + short(safe) + '</div></div></div>' +
+    '<div style="font-size:12px;color:#C9D3CF">Your real savings so far plus the remaining yearly targets, grown at RD/FD 6.5%, PF 8.25%, SSY 8.2%, gold 6%, MF 11% (safe case: MF 8%, gold flat).</div></div>';
+  var curY = D.today.slice(0, 4), cyi = YEARS.indexOf(curY);
+  h += '<div class="sec"><h2>Targets to 2031</h2><div class="sub">Saved of total target</div></div><div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px">';
+  GROUPS.forEach(function(g, gi){
+    var total = sum(YEARS, function(yy, i){ return (D.targets[i] || [])[gi] || 0; });
+    if (!total) return;
+    var have = groupAll(g), p = Math.min(100, pct(have, total));
+    var yt = cyi >= 0 ? ((D.targets[cyi] || [])[gi] || 0) : 0;
+    var ya = sum(D.entries.filter(function(e){ return e.year === curY && groupOf(e.cat) === g; }), function(e){ return e.amt; });
+    h += '<div style="background:var(--teal);color:#fff;border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:6px"><div class="row"><div style="font-size:13px;font-weight:700">' + (g === 'Others' ? 'SSY (Others)' : g) + '</div><div style="font-size:12px;font-weight:700;color:#D5F0EC">' + p + '%</div></div>' +
+      '<div style="font-size:16px;font-weight:700">' + fmt(have) + '</div><div style="font-size:11px;color:#D5F0EC">of ' + fmt(total) + '</div>' +
+      '<div class="bar" style="height:6px;background:#2C8E86"><i style="background:#fff;width:' + p + '%"></i></div>' +
+      '<div style="font-size:11px;color:#E6F7F4">' + curY + ': ' + (yt ? fmt(ya) + ' of ' + fmt(yt) : 'no target') + '</div></div>';
+  });
+  var efH = efHave(), efGoal = (D.planner[0] && D.planner[0].target) || 200000, efP = Math.min(100, pct(efH, 300000));
+  h += '<div style="background:var(--teal);color:#fff;border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:6px"><div class="row"><div style="font-size:13px;font-weight:700">Emergency fund</div><div style="font-size:12px;font-weight:700;color:#D5F0EC">' + efP + '%</div></div>' +
+    '<div style="font-size:16px;font-weight:700">' + fmt(efH) + '</div><div style="font-size:11px;color:#D5F0EC">of ' + fmt(300000) + '</div>' +
+    '<div class="bar" style="height:6px;background:#2C8E86"><i style="background:#fff;width:' + efP + '%"></i></div>' +
+    '<div style="font-size:11px;color:#E6F7F4">' + curY + ': ' + fmt(efH) + ' of ' + fmt(efGoal) + '</div></div>';
+  h += '</div>';
+  h += '<h2 style="margin:4px 4px 0">Milestones</h2><div class="card" style="padding:4px 16px">';
+  MILESTONES.forEach(function(mm){
+    var d = ms[mm.id], p = mm.prog ? mm.prog() : null;
+    h += '<div class="li"><button data-act="ms" data-id="' + mm.id + '" aria-pressed="' + !!d + '" aria-label="' + (d ? 'Untick ' : 'Tick ') + esc(mm.t) + '" style="width:44px;height:44px;flex-shrink:0;border-radius:12px;border:2px solid ' + (d ? 'var(--teal)' : '#C9D3CF') + ';background:' + (d ? 'var(--teal)' : '#fff') + ';color:#fff;font-size:20px;cursor:pointer">' + (d ? '✓' : '') + '</button>' +
+      '<div style="flex:1"><div style="font-size:14px;font-weight:600;' + (d ? 'color:var(--muted)' : '') + '">' + esc(mm.t) + '</div><div class="sub">' +
+      (d ? 'Done ' + esc(d.date) + ' · ' + esc(d.by) : 'Due ' + esc(mm.due) + (p && p[1] ? ' · ' + fmt(p[0]) + ' of ' + fmt(p[1]) : '')) + '</div></div></div>';
+  });
+  h += '</div>';
+  // plan vs actual
+  var cur = D.today.slice(0, 7), rows = [], y = 2026, mo = 12;
+  while (true) { var k = y + '-' + String(mo).padStart(2, '0'); if (k > cur) break; rows.push(k); mo++; if (mo > 12) { mo = 1; y++; } }
+  rows = rows.reverse().slice(0, 12);
+  h += '<div class="sec" style="align-items:center"><h2>Plan vs actual leftover</h2><button class="link" data-act="money">' + (S.showMoney ? 'Hide' : 'Show') + '</button></div>';
+  h += '<div class="card tbl" style="padding:8px 0"><table style="min-width:0"><tr><th>Month</th><th>Planned</th><th>Actual</th><th>Difference</th></tr>';
+  rows.forEach(function(k){
+    var pl = plannedLeft(k), cm = monthClose(k), hasInc = cm.income > 0, diff = cm.left - pl;
+    var col = diff >= 0 ? 'var(--teal)' : 'var(--warm)';
+    h += '<tr><td><b>' + MON[Number(k.slice(5)) - 1] + ' ' + k.slice(2, 4) + '</b></td><td>' + mask(fmt(pl)) + '</td><td>' + (hasInc ? mask(fmt(cm.left)) : '—') + '</td><td style="font-weight:700;color:' + (hasInc ? col : 'var(--muted)') + '">' + (hasInc ? (S.showMoney ? (diff >= 0 ? '+' : '') + fmt(diff) : (diff >= 0 ? 'Ahead' : 'Behind')) : 'No income entered') + '</td></tr>';
+  });
+  h += '</table></div><div class="small" style="padding:0 4px">Planned = budgeted income minus all planned spending, EMIs and savings for that month. Actual = income received minus everything entered. Green means ahead of plan, orange means behind.</div>';
+  h += darkCard;
+  return h;
+}
+
+/* ---------- salary-day quick add ---------- */
+var FIXED_KINDS = ['Income', 'EMI', 'Set-aside', 'Saving'];
+function fixedItems(m){
+  return D.cats.filter(function(c){ return FIXED_KINDS.indexOf(c.kind) >= 0 && c.monthly > 0 && active(c, m); }).map(function(c){
+    return { cat: c.name, kind: c.kind, amt: c.monthly, added: D.entries.some(function(e){ return e.cat === c.name && e.month === m; }) };
+  });
+}
+function salaryModal(){
+  var m = S.month, items = fixedItems(m);
+  var d = D.today.slice(0, 7) === m ? D.today : m + '-01';
+  var h = head('Salary day · ' + MON[Number(m.slice(5)) - 1] + ' ' + m.slice(0, 4)) + '<div class="small">Tick what to add. Amounts come from your category budgets; change any that differ.</div>';
+  items.forEach(function(x, i){
+    h += '<div class="li"><input type="checkbox" id="sd-c' + i + '" ' + (x.added ? 'disabled' : 'checked') + ' aria-label="Add ' + esc(x.cat) + '" style="width:24px;height:24px;flex-shrink:0">' +
+      '<div style="flex:1"><div style="font-size:14px;font-weight:600">' + esc(x.cat) + '</div><div class="sub">' + esc(x.kind) + (x.added ? ' · already added' : '') + '</div></div>' +
+      '<input id="sd-a' + i + '" type="number" inputmode="decimal" value="' + x.amt + '" ' + (x.added ? 'disabled' : '') + ' style="width:110px;height:44px">' + '</div>';
+  });
+  h += '<label>Date<input id="sd-date" type="date" value="' + d + '"></label><button class="btn" data-act="save-salary">Add ticked entries</button>';
+  S._fixed = items;
+  openModal(h);
+}
+/* ---------- where the month-end leftover should go ---------- */
+function suggestedDest(){
+  var ms = D.milestones || {};
+  var efT = (D.planner[0] && D.planner[0].target) || 200000;
+  if (efHave() < efT) return 'Emergency fund';
+  var sbi = D.loans.filter(function(l){ return /sbi gold/i.test(l.name); })[0];
+  if (!ms.sbi && (!sbi || sbi.outstanding > 0)) return 'SBI gold loan repayment';
+  var ax = D.loans.filter(function(l){ return /axis/i.test(l.name); })[0];
+  if (!ms.axis && (!ax || ax.outstanding > 0)) return 'Axis closure fund';
+  return cat('Mutual fund') ? 'Mutual fund' : 'Cash';
+}
+
 var OUT_KINDS = ['Monthly', 'EMI', 'Set-aside', 'Saving', 'Investment'];
 function isClose(e){ return /^Month close /.test(e.note || ''); }
 function monthClose(m){
@@ -206,9 +333,9 @@ function render(){
     sel.innerHTML = h;
   }
   sel.value = S.month;
-  ['home', 'planner', 'goals', 'more'].forEach(function(t){ $('t-' + t).classList.toggle('on', S.tab === t); });
-  $('title').textContent = { home: 'This month', planner: 'Planner', goals: 'Savings targets', more: 'Reports & settings' }[S.tab];
-  $('main').innerHTML = S.tab === 'home' ? homeHtml() : S.tab === 'planner' ? plannerHtml() : S.tab === 'goals' ? goalsHtml() : moreHtml();
+  ['home', 'planner', 'goals', 'more'].forEach(function(t){ $('t-' + t).classList.toggle('on', S.tab === t || (t === 'more' && S.tab === 'plan')); });
+  $('title').textContent = { home: 'This month', planner: 'Planner', goals: 'Savings targets', more: 'Reports & settings', plan: 'Family plan' }[S.tab];
+  $('main').innerHTML = S.tab === 'home' ? homeHtml() : S.tab === 'planner' ? plannerHtml() : S.tab === 'goals' ? goalsHtml() : S.tab === 'plan' ? planHtml() : moreHtml();
 }
 
 function catCard(c, m){
@@ -229,6 +356,12 @@ function homeHtml(){
     '<div class="grid2" style="flex:1"><div><div class="sub">Planned</div><div class="big">' + fmt(planned) + '</div></div><div><div class="sub">Spent</div><div class="big">' + fmt(sp) + '</div></div>' +
     '<div><div class="sub">EMIs</div><div class="big">' + fmt(emi) + '</div></div><div><div class="sub">Left to spend</div><div class="big" style="color:var(--teal)">' + fmt(planned - sp) + '</div></div></div></div>';
 
+  // salary-day quick add banner
+  var pendingFixed = fixedItems(m).filter(function(x){ return !x.added; }).length;
+  if (pendingFixed) h += '<div class="banner" style="background:var(--tint);border-color:#9FD8CF"><div style="flex:1"><b style="color:#0B5E57">Salary day</b><div style="font-size:14px">' + pendingFixed + ' fixed entries not added for this month</div></div><button class="link" data-act="salary-day">Add all</button></div>';
+  // overspend warning
+  var overs = D.cats.filter(function(c){ return c.kind === 'Monthly' && active(c, m) && c.monthly > 0 && spent(c.name, m) > c.monthly; });
+  if (overs.length) h += '<div class="banner"><div style="flex:1"><b>Over budget this month</b><div style="font-size:14px">' + overs.map(function(c){ return esc(c.name) + ' (+' + fmt(spent(c.name, m) - c.monthly) + ')'; }).join(', ') + '</div></div></div>';
   // due this month
   var ab = monthAbbr(m), yr = m.slice(0, 4);
   D.cats.filter(function(c){ return c.kind === 'Yearly' && c.due.indexOf(ab) >= 0; }).forEach(function(c){
@@ -373,6 +506,8 @@ function moreHtml(){
   var h = '<div class="card" style="display:flex;flex-direction:column;gap:12px"><h2>' + MON[Number(S.month.slice(5)) - 1] + ' ' + S.month.slice(0, 4) + ' report</h2><div class="small">Every category with planned and spent amounts, and all entries.</div>' +
     '<button class="btn" data-act="pdf">Download PDF</button><button class="btn ghost" data-act="excel">Download Excel</button><button class="btn plain" data-act="sheet">Open Google Sheet</button></div>';
   h += '<div class="card" style="padding:4px 16px">' + [
+    ['plan', 'Family plan', 'Milestones, plan vs actual, 2031 projection'],
+    ['salary-day', 'Salary day quick add', 'Add all fixed monthly entries in one go'],
     ['recent', 'Recent entries', 'See, check or delete entries'],
     ['cats', 'Manage categories', 'Add, rename, move or delete'],
     ['pin', 'PIN lock', D.pinSet ? 'Change your 4-digit PIN' : 'Set a 4-digit PIN for income'],
@@ -515,11 +650,12 @@ document.addEventListener('click', function(ev){
       S.unlocked = true; S.showMoney = true;
       var cm = monthClose(S.month), dt = lastDay(S.month);
       if (dt > D.today) dt = D.today;
-      var dests = ['Emergency fund', 'SBI gold loan repayment', 'Axis closure fund', 'Cash'].filter(function(n){ return cat(n); });
+      var sug = suggestedDest();
+      var dests = ['Emergency fund', 'SBI gold loan repayment', 'Axis closure fund', 'Mutual fund', 'FD', 'Cash'].filter(function(n){ return cat(n); });
       openModal(head('Close ' + MON[Number(S.month.slice(5)) - 1] + ' ' + S.month.slice(0, 4)) +
         '<div class="small">Leftover this month: <b>' + fmt(cm.left) + '</b>. You can change the amount if your bank balance is different.</div>' +
         '<label>Amount to move (₹)<input id="cm-amt" type="number" inputmode="decimal" value="' + Math.max(0, Math.round(cm.left)) + '"></label>' +
-        '<label>Move to<select id="cm-to">' + dests.map(function(n){ return '<option>' + esc(n) + '</option>'; }).join('') + '</select></label>' +
+        '<label>Move to (suggested by your plan: ' + esc(sug) + ')<select id="cm-to">' + dests.map(function(n){ return '<option' + (n === sug ? ' selected' : '') + '>' + esc(n) + '</option>'; }).join('') + '</select></label>' +
         '<label>Date<input id="cm-date" type="date" value="' + dt + '"></label>' +
         '<button class="btn" data-act="save-close">Move &amp; close month</button>');
       render();
@@ -555,6 +691,23 @@ document.addEventListener('click', function(ev){
   if (a === 'pdf') { call('makePdf', [S.month], 'Making PDF…', download); return; }
   if (a === 'excel') { call('makeExcel', [], 'Preparing Excel…', download); return; }
   if (a === 'sheet') { window.open(D.sheetUrl, '_blank'); return; }
+  if (a === 'salary-day') { var hasIncome = fixedItems(S.month).some(function(x){ return x.kind === 'Income' && !x.added; }); if (hasIncome) needPin(function(){ S.unlocked = true; salaryModal(); }); else salaryModal(); return; }
+  if (a === 'save-salary') {
+    var list = [], dt2 = $('sd-date').value;
+    (S._fixed || []).forEach(function(x, i){
+      var cb = $('sd-c' + i); if (!cb || cb.disabled || !cb.checked) return;
+      var v = Number($('sd-a' + i).value); if (v) list.push({ cat: x.cat, amt: v, date: dt2, note: 'Salary day' });
+    });
+    if (!list.length) { toast('Nothing ticked'); return; }
+    call('addEntries', [list], 'Adding ' + list.length + ' entries…', function(d){ setData(d); toast(list.length + ' entries added'); });
+    return;
+  }
+  if (a === 'plan') { S.tab = 'plan'; render(); $('main').scrollTop = 0; return; }
+  if (a === 'ms') {
+    var id = t.dataset.id, done = !!(D.milestones || {})[id];
+    call('setMilestone', [id, !done], 'Saving…', function(d){ setData(d); toast(done ? 'Milestone unticked' : 'Milestone done'); });
+    return;
+  }
   if (a === 'recent') { recentModal(); return; }
   if (a === 'del-entry') { if (confirm('Delete this entry?')) call('deleteEntry', [t.dataset.row], 'Deleting…', function(d){ setData(d); recentModal(); }); return; }
   if (a === 'cats') { catsModal(); return; }
@@ -578,6 +731,9 @@ document.addEventListener('click', function(ev){
 });
 $('monthSel').addEventListener('change', function(){ S.month = this.value; render(); });
 loadCfg();
+document.addEventListener('visibilitychange', function(){
+  if (document.visibilityState === 'visible' && CFG && D && $('modal').classList.contains('hidden') && Date.now() - LAST_LOAD > 60000) call('getData', [], '', setData);
+});
 if (CFG) load(); else setupScreen();
 if ('serviceWorker' in navigator) { window.addEventListener('load', function(){ navigator.serviceWorker.register('sw.js').catch(function(){}); }); }
 </script>
