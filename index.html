@@ -183,6 +183,18 @@ function kindOf(name){ var c = cat(name); return c ? c.kind : ''; }
 function groupOf(name){ var c = cat(name); return c ? c.group : ''; }
 function monthAbbr(m){ return MON[Number(m.slice(5, 7)) - 1]; }
 var PLANNED_KINDS = ['Monthly', 'EMI', 'Set-aside', 'Saving'];
+var OUT_KINDS = ['Monthly', 'EMI', 'Set-aside', 'Saving', 'Investment'];
+function isClose(e){ return /^Month close /.test(e.note || ''); }
+function monthClose(m){
+  var es = D.entries.filter(function(e){ return e.month === m; });
+  var income = sum(es.filter(function(e){ return kindOf(e.cat) === 'Income'; }), function(e){ return e.amt; });
+  var out = sum(es.filter(function(e){ return !isClose(e) && OUT_KINDS.indexOf(kindOf(e.cat)) >= 0; }), function(e){ return e.amt; });
+  var closes = D.entries.filter(function(e){ return isClose(e) && e.note.indexOf('Month close ' + m) === 0; });
+  return { income: income, out: out, left: income - out, closed: closes.length > 0,
+    closedAmt: sum(closes, function(e){ return e.amt; }), closedTo: closes.length ? closes[0].cat : '' };
+}
+function lastDay(m){ var y = Number(m.slice(0, 4)), mo = Number(m.slice(5)); var d = new Date(y, mo, 0).getDate(); return m + '-' + String(d).padStart(2, '0'); }
+
 
 /* ---------- render ---------- */
 function render(){
@@ -294,6 +306,16 @@ function plannerHtml(){
     h += '<div class="li"><div class="mon">' + esc(l.renewal.slice(0, 3).toUpperCase()) + '</div><div style="flex:1;font-size:14px">' + esc(l.name) + '<div class="sub">' + short(l.outstanding) + ' · interest ~' + fmt(l.outstanding * l.rate) + '</div></div><button class="link" data-act="add" data-cat="Renewal interest paid" data-amt="' + Math.round(l.outstanding * l.rate) + '">Pay</button></div>';
   });
   h += '</div>';
+
+  // close month
+  var cm = monthClose(m);
+  h += '<div class="sec"><h2>Close month</h2><div class="sub">' + MON[Number(m.slice(5)) - 1] + ' ' + m.slice(0, 4) + '</div></div>';
+  h += '<div class="card" style="display:flex;flex-direction:column;gap:10px"><div class="grid3">' +
+    '<div><div class="sub">Income received</div><div style="font-size:14px;font-weight:600">' + mask(fmt(cm.income)) + '</div></div>' +
+    '<div><div class="sub">Spent &amp; saved</div><div style="font-size:14px;font-weight:600">' + fmt(cm.out) + '</div></div>' +
+    '<div><div class="sub">Leftover</div><div style="font-size:14px;font-weight:700;color:var(--teal)">' + mask(fmt(cm.left)) + '</div></div></div>' +
+    (cm.closed ? '<div class="small">Closed: ' + fmt(cm.closedAmt) + ' moved to ' + esc(cm.closedTo) + '.</div>' :
+      '<div class="small">At month end, move the leftover to your emergency fund (kept as cash in the bank).</div><button class="btn" data-act="close-month">Close month</button>') + '</div>';
 
   // funds & goals
   h += '<h2 style="margin:4px 4px 0">Funds &amp; goals</h2>';
@@ -486,6 +508,28 @@ document.addEventListener('click', function(ev){
     var tc = D.cats.filter(function(c){ return c.kind === 'Investment' && c.group === S._move[1]; })[0];
     if (!fc || !tc) { toast('Investment categories missing'); return; }
     call('addEntries', [[{ cat: fc.name, amt: -amt, date: dt, note: 'Moved to ' + S._move[1] }, { cat: tc.name, amt: amt, date: dt, note: 'From ' + S._move[0] }]], 'Moving…', function(d){ setData(d); toast('Moved'); });
+    return;
+  }
+  if (a === 'close-month') {
+    needPin(function(){
+      S.unlocked = true; S.showMoney = true;
+      var cm = monthClose(S.month), dt = lastDay(S.month);
+      if (dt > D.today) dt = D.today;
+      var dests = ['Emergency fund', 'SBI gold loan repayment', 'Axis closure fund', 'Cash'].filter(function(n){ return cat(n); });
+      openModal(head('Close ' + MON[Number(S.month.slice(5)) - 1] + ' ' + S.month.slice(0, 4)) +
+        '<div class="small">Leftover this month: <b>' + fmt(cm.left) + '</b>. You can change the amount if your bank balance is different.</div>' +
+        '<label>Amount to move (₹)<input id="cm-amt" type="number" inputmode="decimal" value="' + Math.max(0, Math.round(cm.left)) + '"></label>' +
+        '<label>Move to<select id="cm-to">' + dests.map(function(n){ return '<option>' + esc(n) + '</option>'; }).join('') + '</select></label>' +
+        '<label>Date<input id="cm-date" type="date" value="' + dt + '"></label>' +
+        '<button class="btn" data-act="save-close">Move &amp; close month</button>');
+      render();
+    });
+    return;
+  }
+  if (a === 'save-close') {
+    var amt2 = Number($('cm-amt').value);
+    if (!amt2 || amt2 < 0) { toast('Enter the amount to move'); return; }
+    call('addEntries', [[{ cat: $('cm-to').value, amt: amt2, date: $('cm-date').value, note: 'Month close ' + S.month }]], 'Closing month…', function(d){ setData(d); toast('Month closed'); });
     return;
   }
   if (a === 'targets') { targetsModal(); return; }
