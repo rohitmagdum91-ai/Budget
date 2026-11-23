@@ -81,7 +81,7 @@ textarea{height:72px;padding:10px 12px}
 .pin{letter-spacing:12px;text-align:center;font-size:24px}
 #toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#15201C;color:#fff;padding:10px 16px;border-radius:12px;font-size:14px;z-index:30;max-width:90%}
 #busy{position:fixed;inset:0;background:rgba(255,255,255,.6);display:flex;align-items:center;justify-content:center;z-index:25;font-weight:600;color:var(--teal)}
-.tg{display:grid;grid-template-columns:52px repeat(7,minmax(70px,1fr));gap:6px;overflow-x:auto;font-size:12px;align-items:center}
+.tg{display:grid;grid-template-columns:52px repeat(8,minmax(70px,1fr));gap:6px;overflow-x:auto;font-size:12px;align-items:center}
 .tg input{height:40px;padding:0 6px;font-size:14px}
 </style>
 </head>
@@ -111,8 +111,8 @@ textarea{height:72px;padding:10px 12px}
 <script>
 var D = null;
 var S = { tab: 'home', part: 'regular', month: '', year: '', unlocked: false, showMoney: false };
-var GROUPS = ['RD', 'FD', 'Gold', 'MF', 'Stock', 'Cash', 'Others'];
-var GROUP_INFO = { RD: ['Recurring deposit', 'Yearly RD target · matures to FD'], FD: ['Fixed deposit', 'Matured RDs + lump sums'], Gold: ['Gold', 'Note grams in the note'], MF: ['Mutual funds (SIP)', 'Monthly SIP'], Stock: ['Stocks', 'Invested amount'], Cash: ['Cash', 'Kept aside in savings'], Others: ['Others (PF, SSY, policies)', 'PF, SSY and policies'] };
+var GROUPS = ['RD', 'FD', 'Gold', 'MF', 'Stock', 'Cash', 'PF', 'Others'];
+var GROUP_INFO = { RD: ['Recurring deposit', 'Yearly RD target · matures to FD'], FD: ['Fixed deposit', 'Matured RDs + lump sums'], Gold: ['Gold', 'Note grams in the note'], MF: ['Mutual funds (SIP)', 'Monthly SIP'], Stock: ['Stocks', 'Invested amount'], Cash: ['Cash', 'Kept aside in savings'], PF: ['Provident fund (PF)', 'Monthly PF from salary'], Others: ['Others (SSY, policies)', 'SSY and policies'] };
 var YEARS = ['2026', '2027', '2028', '2029', '2030', '2031'];
 var MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
@@ -334,7 +334,7 @@ function plannerHtml(){
 
 function goalsHtml(){
   var y = S.year, yi = YEARS.indexOf(y);
-  var tg = D.targets[yi] || [0,0,0,0,0,0,0];
+  var tg = D.targets[yi] || [0,0,0,0,0,0,0,0];
   var achBy = function(g, yy){ return sum(D.entries.filter(function(e){ return e.year === yy && groupOf(e.cat) === g; }), function(e){ return e.amt; }); };
   var totT = sum(tg), totA = sum(GROUPS, function(g){ return achBy(g, y); });
   var h = '<div class="chips" role="group" aria-label="Year">' + YEARS.map(function(v){ return '<button class="chip ' + (v === y ? 'on' : '') + '" data-act="year" data-v="' + v + '" aria-pressed="' + (v === y) + '">' + (v === '2026' ? 'Dec 2026' : v) + '</button>'; }).join('') + '</div>';
