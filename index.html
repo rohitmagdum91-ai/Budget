@@ -83,6 +83,8 @@ textarea{height:72px;padding:10px 12px}
 #busy{position:fixed;inset:0;background:rgba(255,255,255,.6);display:flex;align-items:center;justify-content:center;z-index:25;font-weight:600;color:var(--teal)}
 .tg{display:grid;grid-template-columns:52px repeat(8,minmax(70px,1fr));gap:6px;overflow-x:auto;font-size:12px;align-items:center}
 .tg input{height:40px;padding:0 6px;font-size:14px}
+.tr-ic{width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:12px;font-weight:700}
+.tr-emi{background:#FAECE7;color:#712B13}.tr-hh{background:#F0F3F2;color:#3F4B47}.tr-sv{background:var(--tint);color:#0B5E57}
 </style>
 </head>
 <body>
@@ -290,6 +292,55 @@ function duePaid(name, key, label){
   return D.entries.filter(function(e){ return e.cat === name && ((e.note || '').indexOf('For ' + label) >= 0 || e.month === key); })[0] || null;
 }
 
+/* ---------- salary transfer plan ---------- */
+var TRANSFER_DEFAULT = { switchFrom: '2027-06', rows: [
+  { who: 'Rohit', t: 'emi', name: 'Axis personal loan EMI', acct: 'Auto-debit, stays in Rajarambapu', A: 21568, B: 21568 },
+  { who: 'Rohit', t: 'emi', name: 'Phone EMI', acct: 'Auto-debit, until May 2027', A: 10000, B: 0 },
+  { who: 'Rohit', t: 'emi', name: 'Car EMI', acct: 'Transfer to SBI', A: 19613, B: 19613 },
+  { who: 'Rohit', t: 'hh', name: 'Household spending', acct: 'Transfer to Union', A: 22208, B: 22208 },
+  { who: 'Rohit', t: 'sv', name: 'Annual pot (Rohit share)', acct: 'ICICI joint, FD ladder', A: 13611, B: 23611 },
+  { who: 'Anjali', t: 'sv', name: 'Nifty 50 SIP', acct: 'Auto-debit, Anjali name', A: 10000, B: 10000 },
+  { who: 'Anjali', t: 'sv', name: 'SSY for Swasti', acct: 'Auto-debit', A: 2000, B: 2000 },
+  { who: 'Anjali', t: 'sv', name: 'RD for Divyansh', acct: 'Auto-debit', A: 3000, B: 3000 },
+  { who: 'Anjali', t: 'sv', name: 'Annual pot (Anjali share)', acct: 'ICICI joint, FD ladder', A: 13056, B: 3056 },
+  { who: 'Anjali', t: 'sv', name: 'Emergency fund / FD', acct: 'ICICI, Anjali name', A: 9944, B: 19944 }
+] };
+function trPlan(){ return D.transfers && D.transfers.rows ? D.transfers : TRANSFER_DEFAULT; }
+function trSalary(who){ var c = cat(who === 'Rohit' ? 'Rohit salary' : 'Anjali salary'); return c ? c.monthly : (who === 'Rohit' ? 87000 : 38000); }
+function transfersHtml(){
+  var P = trPlan(), per = S.trPer || (S.month >= P.switchFrom ? 'B' : 'A');
+  S.trPer = per;
+  var col = { emi: 'var(--warm)', hh: '#888780', sv: 'var(--teal)' }, code = { emi: 'EMI', hh: 'HH', sv: 'SV' };
+  var h = '<button class="link" data-act="tab" data-v="more" style="align-self:flex-start;margin:-8px 0 -6px -8px">‹ Back to More</button>';
+  h += '<div class="seg" style="grid-template-columns:repeat(2,minmax(0,1fr))"><button data-act="tr-per" data-v="A" aria-pressed="' + (per === 'A') + '" class="' + (per === 'A' ? 'on' : '') + '">Until ' + dueLabel(prevMonth(P.switchFrom)) + '</button><button data-act="tr-per" data-v="B" aria-pressed="' + (per === 'B') + '" class="' + (per === 'B' ? 'on' : '') + '">From ' + dueLabel(P.switchFrom) + '</button></div>';
+  if (!S.showMoney) return h + '<div class="card" style="display:flex;flex-direction:column;gap:10px"><div class="small">Salary amounts are private.</div><button class="btn ghost" data-act="money">Show transfer plan</button></div>';
+  var pot = 0;
+  ['Rohit', 'Anjali'].forEach(function(who){
+    var sal = trSalary(who), rows = P.rows.filter(function(r){ return r.who === who && r[per] > 0; }), used = 0;
+    h += '<div class="card" style="display:flex;flex-direction:column;gap:2px"><div class="row"><h2>' + who + ' salary</h2><b>' + fmt(sal) + '</b></div><div class="sub" style="margin-bottom:6px">' + (who === 'Rohit' ? 'Rajarambapu Bank' : 'Anjali salary account') + ' · salary day + 1</div>';
+    rows.forEach(function(r){
+      used += r[per]; if (/annual pot/i.test(r.name)) pot += r[per];
+      h += '<div class="li" style="align-items:flex-start"><div class="tr-ic tr-' + r.t + '">' + code[r.t] + '</div><div style="flex:1;min-width:0"><div class="row"><span style="font-size:14px">' + esc(r.name) + '</span><b style="font-size:14px">' + fmt(r[per]) + '</b></div><div class="sub">' + esc(r.acct) + '</div>' +
+        '<div class="bar" style="height:6px;margin-top:6px"><i style="width:' + Math.min(100, pct(r[per], sal)) + '%;background:' + col[r.t] + '"></i></div></div></div>';
+    });
+    h += '<div class="sub" style="padding-top:8px">Left in account: ' + fmt(sal - used) + '</div></div>';
+  });
+  h += '<div class="hero"><div class="row"><div style="font-weight:700">Annual pot total</div><div style="font-weight:700">' + fmt(pot) + '</div></div><div style="font-size:13px;color:#E6F7F4">Short-term FDs maturing before each premium, fee and renewal</div></div>';
+  h += '<div class="small" style="padding:0 4px">EMI = loan payment · HH = household spending · SV = savings and funds</div>';
+  h += '<button class="btn plain" data-act="tr-edit">Edit amounts for this period</button>';
+  return h;
+}
+function prevMonth(k){ var y = Number(k.slice(0, 4)), m = Number(k.slice(5)) - 1; if (m < 1) { m = 12; y--; } return y + '-' + String(m).padStart(2, '0'); }
+function trEditModal(){
+  var P = trPlan(), per = S.trPer || 'A';
+  var h = head('Edit transfers · ' + (per === 'A' ? 'until ' + dueLabel(prevMonth(P.switchFrom)) : 'from ' + dueLabel(P.switchFrom)));
+  P.rows.forEach(function(r, i){
+    h += '<label>' + esc(r.who) + ' · ' + esc(r.name) + '<input id="tr-' + i + '" type="number" inputmode="decimal" value="' + (r[per] || 0) + '"></label>';
+  });
+  h += '<label>Second period starts (yyyy-mm)<input id="tr-switch" value="' + esc(P.switchFrom) + '"></label><button class="btn" data-act="tr-save">Save for both phones</button>';
+  openModal(h);
+}
+
 /* ---------- salary-day quick add ---------- */
 var FIXED_KINDS = ['Income', 'EMI', 'Set-aside', 'Saving'];
 function fixedItems(m){
@@ -345,9 +396,9 @@ function render(){
     sel.innerHTML = h;
   }
   sel.value = S.month;
-  ['home', 'planner', 'goals', 'more'].forEach(function(t){ $('t-' + t).classList.toggle('on', S.tab === t || (t === 'more' && S.tab === 'plan')); });
-  $('title').textContent = { home: 'This month', planner: 'Planner', goals: 'Savings targets', more: 'Reports & settings', plan: 'Family plan' }[S.tab];
-  $('main').innerHTML = S.tab === 'home' ? homeHtml() : S.tab === 'planner' ? plannerHtml() : S.tab === 'goals' ? goalsHtml() : S.tab === 'plan' ? planHtml() : moreHtml();
+  ['home', 'planner', 'goals', 'more'].forEach(function(t){ $('t-' + t).classList.toggle('on', S.tab === t || (t === 'more' && (S.tab === 'plan' || S.tab === 'transfers'))); });
+  $('title').textContent = { home: 'This month', planner: 'Planner', goals: 'Savings targets', more: 'Reports & settings', plan: 'Family plan', transfers: 'Salary transfers' }[S.tab];
+  $('main').innerHTML = S.tab === 'home' ? homeHtml() : S.tab === 'planner' ? plannerHtml() : S.tab === 'goals' ? goalsHtml() : S.tab === 'plan' ? planHtml() : S.tab === 'transfers' ? transfersHtml() : moreHtml();
 }
 
 function catCard(c, m){
@@ -528,6 +579,7 @@ function moreHtml(){
     '<button class="btn" data-act="pdf">Download PDF</button><button class="btn ghost" data-act="excel">Download Excel</button><button class="btn plain" data-act="sheet">Open Google Sheet</button></div>';
   h += '<div class="card" style="padding:4px 16px">' + [
     ['plan', 'Family plan', 'Milestones, plan vs actual, 2031 projection'],
+    ['transfers', 'Salary transfers', 'Where each salary goes every month'],
     ['salary-day', 'Salary day quick add', 'Add all fixed monthly entries in one go'],
     ['recent', 'Recent entries', 'See, check or delete entries'],
     ['cats', 'Manage categories', 'Add, rename, move or delete'],
@@ -727,6 +779,16 @@ document.addEventListener('click', function(ev){
     });
     if (!list.length) { toast('Nothing ticked'); return; }
     call('addEntries', [list], 'Adding ' + list.length + ' entries…', function(d){ setData(d); toast(list.length + ' entries added'); });
+    return;
+  }
+  if (a === 'transfers') { S.tab = 'transfers'; S.trPer = null; render(); $('main').scrollTop = 0; return; }
+  if (a === 'tr-per') { S.trPer = t.dataset.v; render(); return; }
+  if (a === 'tr-edit') { trEditModal(); return; }
+  if (a === 'tr-save') {
+    var P = JSON.parse(JSON.stringify(trPlan())), per2 = S.trPer || 'A';
+    P.rows.forEach(function(r, i){ r[per2] = Number($('tr-' + i).value) || 0; });
+    var sw = $('tr-switch').value.trim(); if (/^\d{4}-\d{2}$/.test(sw)) P.switchFrom = sw;
+    call('setTransfers', [P], 'Saving…', function(d){ setData(d); toast('Transfer plan saved'); });
     return;
   }
   if (a === 'plan') { S.tab = 'plan'; render(); $('main').scrollTop = 0; return; }
