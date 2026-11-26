@@ -15,6 +15,8 @@
 *{box-sizing:border-box}
 html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-tap-highlight-color:transparent}
 button,input,select,textarea{font:inherit;color:inherit}
+nav button{position:relative}
+nav button.dot-on::after{content:'';position:absolute;top:10px;left:calc(50% + 8px);width:9px;height:9px;border-radius:50%;background:#B42318}
 #app{max-width:520px;margin:0 auto;height:100%;display:flex;flex-direction:column;position:relative}
 header{background:var(--teal);color:#fff;padding:calc(14px + env(safe-area-inset-top,0px)) 18px 14px;display:flex;flex-direction:column;gap:4px}
 .hrow{display:flex;justify-content:space-between;align-items:center;gap:8px}
@@ -199,7 +201,7 @@ var MILESTONES = [
   { id: 'fd50', t: 'FD ₹50,000', due: '2027', prog: function(){ return [groupAll('FD'), 50000]; } },
   { id: 'sip2', t: 'Start ₹2,000 MF SIP', due: 'Jun 2027' },
   { id: 'sbi', t: 'SBI gold loan closed', due: 'Apr 2029', prog: function(){ return [allTime('SBI gold loan repayment'), 500000]; } },
-  { id: 'axis', t: 'Axis loan closed', due: 'Jan 2030', prog: function(){ var p = D.planner[1] || { start: 0, target: 0 }; return [p.start + allTime('Axis closure fund'), p.target]; } },
+  { id: 'axis', t: 'Axis loan closed', due: 'Jan 2030', prog: function(){ var p = D.planner[1] || { start: 0, target: 0 }; return [p.start + allTime('Axis closure fund'), loanByName(/axis/i) ? axisBalNow() : p.target]; } },
   { id: 'sip25', t: 'SIP raised to ₹25,000', due: 'Feb 2030' },
   { id: 'ef3', t: 'Emergency fund ₹3 lakh', due: '2030', prog: function(){ return [efHave(), 300000]; } },
   { id: 'goldend', t: 'Gold loan fully repaid', due: 'Dec 2031' }
@@ -245,13 +247,13 @@ function planHtml(){
     var have = groupAll(g), p = Math.min(100, pct(have, total));
     var yt = cyi >= 0 ? ((D.targets[cyi] || [])[gi] || 0) : 0;
     var ya = sum(D.entries.filter(function(e){ return e.year === curY && groupOf(e.cat) === g; }), function(e){ return e.amt; });
-    h += '<div style="background:var(--teal);color:#fff;border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:6px"><div class="row"><div style="font-size:13px;font-weight:700">' + (g === 'Others' ? 'SSY (Others)' : g) + '</div><div style="font-size:12px;font-weight:700;color:#D5F0EC">' + p + '%</div></div>' +
+    h += '<div data-act="add" data-group="' + g + '" role="button" tabindex="0" style="cursor:pointer;background:var(--teal);color:#fff;border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:6px"><div class="row"><div style="font-size:13px;font-weight:700">' + (g === 'Others' ? 'SSY (Others)' : g) + '</div><div style="font-size:12px;font-weight:700;color:#D5F0EC">' + p + '%</div></div>' +
       '<div style="font-size:16px;font-weight:700">' + fmt(have) + '</div><div style="font-size:11px;color:#D5F0EC">of ' + fmt(total) + '</div>' +
       '<div class="bar" style="height:6px;background:#2C8E86"><i style="background:#fff;width:' + p + '%"></i></div>' +
       '<div style="font-size:11px;color:#E6F7F4">' + curY + ': ' + (yt ? fmt(ya) + ' of ' + fmt(yt) : 'no target') + '</div></div>';
   });
   var efH = efHave(), efGoal = (D.planner[0] && D.planner[0].target) || 200000, efP = Math.min(100, pct(efH, 300000));
-  h += '<div style="background:var(--teal);color:#fff;border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:6px"><div class="row"><div style="font-size:13px;font-weight:700">Emergency fund</div><div style="font-size:12px;font-weight:700;color:#D5F0EC">' + efP + '%</div></div>' +
+  h += '<div data-act="add" data-cat="Emergency fund" role="button" tabindex="0" style="cursor:pointer;background:var(--teal);color:#fff;border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:6px"><div class="row"><div style="font-size:13px;font-weight:700">Emergency fund</div><div style="font-size:12px;font-weight:700;color:#D5F0EC">' + efP + '%</div></div>' +
     '<div style="font-size:16px;font-weight:700">' + fmt(efH) + '</div><div style="font-size:11px;color:#D5F0EC">of ' + fmt(300000) + '</div>' +
     '<div class="bar" style="height:6px;background:#2C8E86"><i style="background:#fff;width:' + efP + '%"></i></div>' +
     '<div style="font-size:11px;color:#E6F7F4">' + curY + ': ' + fmt(efH) + ' of ' + fmt(efGoal) + '</div></div>';
@@ -273,9 +275,9 @@ function planHtml(){
   rows.forEach(function(k){
     var pl = plannedLeft(k), cm = monthClose(k), hasInc = cm.income > 0, diff = cm.left - pl;
     var col = diff >= 0 ? 'var(--teal)' : 'var(--warm)';
-    h += '<tr><td><b>' + MON[Number(k.slice(5)) - 1] + ' ' + k.slice(2, 4) + '</b></td><td>' + mask(fmt(pl)) + '</td><td>' + (hasInc ? mask(fmt(cm.left)) : '—') + '</td><td style="font-weight:700;color:' + (hasInc ? col : 'var(--muted)') + '">' + (hasInc ? (S.showMoney ? (diff >= 0 ? '+' : '') + fmt(diff) : (diff >= 0 ? 'Ahead' : 'Behind')) : 'No income entered') + '</td></tr>';
+    h += '<tr data-act="goto-month" data-v="' + k + '" style="cursor:pointer"><td><b>' + MON[Number(k.slice(5)) - 1] + ' ' + k.slice(2, 4) + ' ›</b></td><td>' + mask(fmt(pl)) + '</td><td>' + (hasInc ? mask(fmt(cm.left)) : '—') + '</td><td style="font-weight:700;color:' + (hasInc ? col : 'var(--muted)') + '">' + (hasInc ? (S.showMoney ? (diff >= 0 ? '+' : '') + fmt(diff) : (diff >= 0 ? 'Ahead' : 'Behind')) : 'No income entered') + '</td></tr>';
   });
-  h += '</table></div><div class="small" style="padding:0 4px">Planned = budgeted income minus all planned spending, EMIs and savings for that month. Actual = income received minus everything entered. Green means ahead of plan, orange means behind.</div>';
+  h += '</table></div><div class="small" style="padding:0 4px">Planned = budgeted income minus all planned spending, EMIs and savings for that month. Actual = income received minus everything entered. Green means ahead of plan, orange means behind. Tap a month to open it in Planner.</div>';
   h += darkCard;
   return h;
 }
@@ -320,7 +322,7 @@ function transfersHtml(){
     h += '<div class="card" style="display:flex;flex-direction:column;gap:2px"><div class="row"><h2>' + who + ' salary</h2><b>' + fmt(sal) + '</b></div><div class="sub" style="margin-bottom:6px">' + (who === 'Rohit' ? 'Rajarambapu Bank' : 'Anjali salary account') + ' · salary day + 1</div>';
     rows.forEach(function(r){
       used += r[per]; if (/annual pot/i.test(r.name)) pot += r[per];
-      h += '<div class="li" style="align-items:flex-start"><div class="tr-ic tr-' + r.t + '">' + code[r.t] + '</div><div style="flex:1;min-width:0"><div class="row"><span style="font-size:14px">' + esc(r.name) + '</span><b style="font-size:14px">' + fmt(r[per]) + '</b></div><div class="sub">' + esc(r.acct) + '</div>' +
+      h += '<div class="li" data-act="tr-edit" role="button" tabindex="0" style="align-items:flex-start;cursor:pointer"><div class="tr-ic tr-' + r.t + '">' + code[r.t] + '</div><div style="flex:1;min-width:0"><div class="row"><span style="font-size:14px">' + esc(r.name) + '</span><b style="font-size:14px">' + fmt(r[per]) + '</b></div><div class="sub">' + esc(r.acct) + '</div>' +
         '<div class="bar" style="height:6px;margin-top:6px"><i style="width:' + Math.min(100, pct(r[per], sal)) + '%;background:' + col[r.t] + '"></i></div></div></div>';
     });
     h += '<div class="sub" style="padding-top:8px">Left in account: ' + fmt(sal - used) + '</div></div>';
@@ -339,6 +341,149 @@ function trEditModal(){
   });
   h += '<label>Second period starts (yyyy-mm)<input id="tr-switch" value="' + esc(P.switchFrom) + '"></label><button class="btn" data-act="tr-save">Save for both phones</button>';
   openModal(h);
+}
+
+/* ---------- category history and editing ---------- */
+function catHistModal(name){
+  var m = S.month, c = cat(name);
+  var list = D.entries.filter(function(e){ return e.cat === name && e.month === m; }).sort(function(a, b){ return a.date < b.date ? 1 : -1; });
+  var tot = sum(list, function(e){ return e.amt; });
+  var h = head(esc(name)) + '<div class="small">' + MON[Number(m.slice(5)) - 1] + ' ' + m.slice(0, 4) + ' · spent ' + fmt(tot) + (c && c.monthly ? ' of ' + fmt(c.monthly) : '') + '</div>';
+  if (!list.length) h += '<div class="small">No entries this month.</div>';
+  list.forEach(function(e){
+    h += '<div class="li"><div style="flex:1"><div style="font-size:14px;font-weight:600">' + fmt(e.amt) + '</div><div class="sub">' + e.date + ' · ' + esc(e.by) + (e.note ? ' · ' + esc(e.note) : '') + '</div></div><button class="link" data-act="edit-entry" data-row="' + e.row + '">Edit</button><button class="link" style="color:#B42318" data-act="del-entry" data-row="' + e.row + '" data-back="' + esc(name) + '">Delete</button></div>';
+  });
+  openModal(h + '<button class="btn" data-act="add" data-cat="' + esc(name) + '">+ Add to ' + esc(name) + '</button>');
+}
+function editModal(row){
+  var e = D.entries.filter(function(x){ return x.row === row; })[0];
+  if (!e) { toast('Entry not found; refresh'); return; }
+  var income = kindOf(e.cat) === 'Income';
+  S._editRow = row;
+  openModal(head('Edit entry') +
+    '<label>Category<select id="f-cat">' + catOptions(income ? 'income' : '', e.cat) + '</select></label>' +
+    '<label>Amount (₹)<input id="f-amt" type="number" inputmode="decimal" value="' + e.amt + '"></label>' +
+    '<label>Date<input id="f-date" type="date" value="' + e.date + '"></label>' +
+    '<label>Note (optional)<input id="f-note" type="text" value="' + esc(e.note) + '"></label>' +
+    '<button class="btn" data-act="save-edit">Save changes</button>');
+}
+
+/* ---------- dates, loans and upcoming payments ---------- */
+function addMonths(k, n){ var y = +k.slice(0, 4), mm = +k.slice(5) - 1 + n; y += Math.floor(mm / 12); mm = ((mm % 12) + 12) % 12; return y + '-' + String(mm + 1).padStart(2, '0'); }
+function addDays(d, n){ var x = new Date(d + 'T00:00:00'); x.setDate(x.getDate() + n); return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); }
+function daysTo(d){ return Math.round((new Date(d + 'T00:00:00') - new Date(D.today + 'T00:00:00')) / 86400000); }
+function dayOf(c, def){ var n = Number(c && c.dueDay) || def; return String(Math.min(28, Math.max(1, n))).padStart(2, '0'); }
+function niceDate(d){ return Number(d.slice(8)) + ' ' + MON[Number(d.slice(5, 7)) - 1] + ' ' + d.slice(0, 4); }
+function guessEmiCat(name){
+  var rx = /axis/i.test(name) ? /axis/i : /car/i.test(name) ? /car/i : /phone|mobile/i.test(name) ? /phone|mobile/i : /gold loan emi|anjali gold/i.test(name) ? /gold loan emi/i : null;
+  if (!rx) return '';
+  var c = D.cats.filter(function(x){ return x.kind === 'EMI' && rx.test(x.name); })[0];
+  return c ? c.name : '';
+}
+function loanInfo(l){
+  var cur = D.today.slice(0, 7), asOf = l.asOf || '2026-11', r = (l.rate || 0) / 12, bal = l.outstanding;
+  var ecName = l.emiCat || guessEmiCat(l.name), ec = ecName ? cat(ecName) : null, emi = l.emi || (ec ? ec.monthly : 0);
+  var info = { bal: bal, emi: emi, emiCat: ec ? ec.name : '', unrecorded: 0, left: 0, end: '', paidNow: false, dueDate: '', start: bal };
+  if (emi > 0 && ec) {
+    var k = addMonths(asOf, 1);
+    while (k <= cur && bal > 0) {
+      var paid = D.entries.some(function(e){ return e.cat === ec.name && e.month === k; });
+      if (paid || k < cur) { if (!paid) info.unrecorded++; bal = r ? bal * (1 + r) - emi : bal - emi; if (bal < 1) bal = 0; }
+      if (k === cur) info.paidNow = paid;
+      k = addMonths(k, 1);
+    }
+    info.bal = bal;
+    if (bal > 0) {
+      var x = r ? 1 - bal * r / emi : 1;
+      info.left = r ? (x > 0 ? Math.ceil(-Math.log(x) / Math.log(1 + r)) : 999) : Math.ceil(bal / emi);
+      info.end = addMonths(cur, info.paidNow ? info.left : info.left - 1);
+    }
+    info.dueDate = cur + '-' + dayOf(ec, 5);
+  } else if (/sbi gold/i.test(l.name)) {
+    info.bal = Math.max(0, bal - sum(D.entries.filter(function(e){ return e.cat === 'SBI gold loan repayment' && e.month > asOf; }), function(e){ return e.amt; }));
+  }
+  return info;
+}
+function loanByName(rx){ return D.loans.filter(function(l){ return l.name && rx.test(l.name); })[0]; }
+function axisBalNow(){ var l = loanByName(/axis/i); return l ? loanInfo(l).bal : 0; }
+function upcomingItems(days){
+  var cur = D.today.slice(0, 7), out = [], limit = addDays(D.today, days);
+  D.cats.filter(function(c){ return c.kind === 'EMI' && c.monthly > 0; }).forEach(function(c){
+    [cur, addMonths(cur, 1)].forEach(function(k){
+      if (!active(c, k)) return;
+      out.push({ type: 'EMI', name: c.name, amt: c.monthly, date: k + '-' + dayOf(c, 5), paid: D.entries.some(function(e){ return e.cat === c.name && e.month === k; }), cat: c.name });
+    });
+  });
+  D.cats.filter(function(c){ return c.kind === 'Yearly'; }).forEach(function(c){
+    var parts = (c.due || '').split(',').map(function(x){ return x.trim(); }).filter(Boolean);
+    parts.forEach(function(p){
+      var k = nextDue(p, cur), label = dueLabel(k);
+      out.push({ type: 'Yearly', name: c.name, amt: Math.round(c.yearly / parts.length), date: k + '-' + dayOf(c, 1), paid: !!duePaid(c.name, k, label), cat: c.name, label: label, key: k });
+    });
+  });
+  D.loans.filter(function(l){ return l.renewal; }).forEach(function(l){
+    var k = nextDue(l.renewal.slice(0, 3), cur), label = dueLabel(k), tag = l.name + ' interest ' + label;
+    out.push({ type: 'Renewal', name: l.name + ' renewal', amt: Math.round(l.outstanding * l.rate), date: k + '-01', cat: 'Renewal interest paid', note: tag, label: label,
+      paid: D.entries.some(function(e){ return e.cat === 'Renewal interest paid' && (e.note || '').indexOf(tag) >= 0; }) });
+  });
+  (D.cards || []).forEach(function(cd){ out.push({ type: 'Card', name: cd.card + ' bill', amt: cd.amount, date: cd.due, paid: !!cd.paid, id: cd.id }); });
+  return out.filter(function(x){ return x.date <= limit && (x.paid ? x.date >= D.today : true) && (x.paid || x.date >= addDays(D.today, -40)); })
+    .sort(function(a, b){ return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
+}
+function dueTxt(x){
+  if (x.paid) return '<span style="color:var(--teal);font-weight:600">✓ Paid</span>';
+  var n = daysTo(x.date);
+  if (n < 0) return '<span style="color:#B42318;font-weight:700">Overdue ' + (-n) + ' day' + (n === -1 ? '' : 's') + '</span>';
+  if (n === 0) return '<span style="color:var(--warmink);font-weight:700">Due today</span>';
+  return '<span style="color:' + (n <= 7 ? 'var(--warmink)' : 'var(--muted)') + ';font-weight:600">in ' + n + ' day' + (n === 1 ? '' : 's') + '</span>';
+}
+function upRow(x, i){
+  var btn = x.paid ? '' : '<button class="link" data-act="up-pay" data-i="' + i + '">' + (x.type === 'Card' ? 'Mark paid' : 'Pay') + '</button>';
+  return '<div class="li"><div class="mon ' + (!x.paid && daysTo(x.date) <= 7 ? 'now' : '') + '">' + x.type.slice(0, 4).toUpperCase() + '</div><div style="flex:1;font-size:14px">' + esc(x.name) +
+    '<div class="sub">' + fmt(x.amt) + ' · ' + niceDate(x.date) + ' · ' + dueTxt(x) + '</div></div>' + btn + '</div>';
+}
+function upcomingModal(){
+  var list = upcomingItems(90); S._up = list;
+  var h = head('Upcoming payments') + '<div class="small">Next 90 days: EMIs, premiums, fees, renewals and card bills.</div><div class="card" style="padding:4px 0">';
+  if (!list.length) h += '<div class="small">Nothing due.</div>';
+  list.forEach(function(x, i){ h += upRow(x, i); });
+  openModal(h + '</div>');
+}
+function cardsModal(){
+  var list = (D.cards || []).slice().sort(function(a, b){ return a.due < b.due ? 1 : -1; });
+  var h = head('Credit card bills') + '<div class="small">Bills are read every evening from statement emails forwarded to rohitmagdum91@gmail.com. You can also add one yourself.</div>';
+  h += '<button class="btn ghost" data-act="cards-scan">Check email now</button>';
+  if (!list.length) h += '<div class="small">No card bills yet.</div>';
+  list.forEach(function(cd){
+    h += '<div class="li"><div style="flex:1"><div style="font-size:14px;font-weight:600">' + esc(cd.card) + '</div><div class="sub">' + (cd.amount ? fmt(cd.amount) : 'Amount in PDF – tap Edit') + ' · due ' + niceDate(cd.due) + ' · ' + dueTxt({ paid: cd.paid, date: cd.due }) + (cd.src === 'email' ? ' · from email' : '') + '</div></div>' +
+      '<button class="link" data-act="card-paid" data-id="' + esc(cd.id) + '">' + (cd.paid ? 'Undo' : 'Paid') + '</button><button class="link" data-act="card-edit" data-id="' + esc(cd.id) + '">Edit</button></div>';
+  });
+  openModal(h + '<button class="btn" data-act="card-edit" data-id="">+ Add card bill</button>');
+}
+function cardForm(id){
+  var cd = (D.cards || []).filter(function(x){ return x.id === id; })[0] || { id: '', card: '', amount: '', due: D.today };
+  S._card = cd;
+  openModal(head(cd.id ? 'Edit card bill' : 'Add card bill') +
+    '<label>Card name<input id="cd-name" value="' + esc(cd.card) + '" placeholder="e.g. HDFC ••1234"></label>' +
+    '<label>Total amount due (₹)<input id="cd-amt" type="number" inputmode="decimal" value="' + (cd.amount || '') + '"></label>' +
+    '<label>Payment due date<input id="cd-due" type="date" value="' + esc(cd.due) + '"></label>' +
+    '<div class="small">Card bills are not counted as expenses; your card spending is already entered as normal expenses.</div>' +
+    '<button class="btn" data-act="card-save">Save</button>' + (cd.id ? '<button class="btn danger" data-act="card-del" data-id="' + esc(cd.id) + '">Delete</button>' : ''));
+}
+function loanForm(row){
+  var l = D.loans.filter(function(x){ return x.row === row; })[0];
+  S._loan = row;
+  var emiCats = D.cats.filter(function(c){ return c.kind === 'EMI'; });
+  openModal(head(esc(l.name)) +
+    '<div class="small">Enter the balance from your latest loan statement and the month it is for. The app then reduces it every month as EMIs are recorded.</div>' +
+    '<label>Balance (₹)<input id="lo-amt" type="number" inputmode="decimal" value="' + l.outstanding + '"></label>' +
+    '<label>Balance as of (yyyy-mm)<input id="lo-asof" value="' + esc(l.asOf || '2026-11') + '"></label>' +
+    '<label>Interest rate (% per year)<input id="lo-rate" type="number" inputmode="decimal" step="0.01" value="' + (l.rate ? +(l.rate * 100).toFixed(2) : '') + '"></label>' +
+    '<label>EMI (₹, blank if none)<input id="lo-emi" type="number" inputmode="decimal" value="' + (l.emi || '') + '"></label>' +
+    '<label>EMI category<select id="lo-cat"><option value="">None</option>' + emiCats.map(function(c){ var sel = (l.emiCat || guessEmiCat(l.name)) === c.name; return '<option' + (sel ? ' selected' : '') + '>' + esc(c.name) + '</option>'; }).join('') + '</select></label>' +
+    '<label>Renewal month (blank if none)<input id="lo-ren" value="' + esc(l.renewal) + '" placeholder="e.g. Jun"></label>' +
+    '<div class="small">Set the EMI date (day of month) in More › Manage categories › the EMI category › Due day.</div>' +
+    '<button class="btn" data-act="save-loan">Save</button>');
 }
 
 /* ---------- salary-day quick add ---------- */
@@ -367,9 +512,9 @@ function suggestedDest(){
   var efT = (D.planner[0] && D.planner[0].target) || 200000;
   if (efHave() < efT) return 'Emergency fund';
   var sbi = D.loans.filter(function(l){ return /sbi gold/i.test(l.name); })[0];
-  if (!ms.sbi && (!sbi || sbi.outstanding > 0)) return 'SBI gold loan repayment';
+  if (!ms.sbi && (!sbi || loanInfo(sbi).bal > 0)) return 'SBI gold loan repayment';
   var ax = D.loans.filter(function(l){ return /axis/i.test(l.name); })[0];
-  if (!ms.axis && (!ax || ax.outstanding > 0)) return 'Axis closure fund';
+  if (!ms.axis && (!ax || loanInfo(ax).bal > 0)) return 'Axis closure fund';
   return cat('Mutual fund') ? 'Mutual fund' : 'Cash';
 }
 
@@ -396,6 +541,7 @@ function render(){
     sel.innerHTML = h;
   }
   sel.value = S.month;
+  try { $('t-planner').classList.toggle('dot-on', upcomingItems(7).some(function(x){ return !x.paid; })); } catch (e) {}
   ['home', 'planner', 'goals', 'more'].forEach(function(t){ $('t-' + t).classList.toggle('on', S.tab === t || (t === 'more' && (S.tab === 'plan' || S.tab === 'transfers'))); });
   $('title').textContent = { home: 'This month', planner: 'Planner', goals: 'Savings targets', more: 'Reports & settings', plan: 'Family plan', transfers: 'Salary transfers' }[S.tab];
   $('main').innerHTML = S.tab === 'home' ? homeHtml() : S.tab === 'planner' ? plannerHtml() : S.tab === 'goals' ? goalsHtml() : S.tab === 'plan' ? planHtml() : S.tab === 'transfers' ? transfersHtml() : moreHtml();
@@ -403,7 +549,7 @@ function render(){
 
 function catCard(c, m){
   var plan = active(c, m) ? c.monthly : 0, sp = spent(c.name, m);
-  return '<div class="card" style="display:flex;flex-direction:column;gap:8px"><div class="row"><div style="font-size:15px;font-weight:600">' + esc(c.name) + '</div>' +
+  return '<div class="card" data-act="cat-hist" data-cat="' + esc(c.name) + '" role="button" tabindex="0" style="display:flex;flex-direction:column;gap:8px;cursor:pointer"><div class="row"><div style="font-size:15px;font-weight:600">' + esc(c.name) + ' <span class="sub" style="font-weight:400">›</span></div>' +
     '<button class="plus" data-act="add" data-cat="' + esc(c.name) + '" aria-label="Add to ' + esc(c.name) + '">+</button></div>' +
     '<div class="row small"><div><b style="color:var(--ink)">' + fmt(sp) + '</b> of ' + fmt(plan) + '</div><div>' + fmt(plan - sp) + ' left</div></div>' + barHtml(sp, plan) + '</div>';
 }
@@ -419,12 +565,21 @@ function homeHtml(){
     '<div class="grid2" style="flex:1"><div><div class="sub">Planned</div><div class="big">' + fmt(planned) + '</div></div><div><div class="sub">Spent</div><div class="big">' + fmt(sp) + '</div></div>' +
     '<div><div class="sub">EMIs</div><div class="big">' + fmt(emi) + '</div></div><div><div class="sub">Left to spend</div><div class="big" style="color:var(--teal)">' + fmt(planned - sp) + '</div></div></div></div>';
 
+  // coming up (next 15 days, unpaid, incl. overdue)
+  if (m === D.today.slice(0, 7)) {
+    var up = upcomingItems(15).filter(function(x){ return !x.paid; }); S._up = up;
+    if (up.length) {
+      h += '<div class="card" style="padding:4px 16px;border:1px solid #F5C9A8"><div class="row" style="padding:10px 0 4px"><b style="color:var(--warmink)">Coming up · next 15 days</b><button class="link" data-act="upcoming">See all</button></div>';
+      up.slice(0, 4).forEach(function(x, i){ h += upRow(x, i); });
+      h += '</div>';
+    }
+  }
   // salary-day quick add banner
   var pendingFixed = fixedItems(m).filter(function(x){ return !x.added; }).length;
   if (pendingFixed) h += '<div class="banner" style="background:var(--tint);border-color:#9FD8CF"><div style="flex:1"><b style="color:#0B5E57">Salary day</b><div style="font-size:14px">' + pendingFixed + ' fixed entries not added for this month</div></div><button class="link" data-act="salary-day">Add all</button></div>';
   // overspend warning
   var overs = D.cats.filter(function(c){ return c.kind === 'Monthly' && active(c, m) && c.monthly > 0 && spent(c.name, m) > c.monthly; });
-  if (overs.length) h += '<div class="banner"><div style="flex:1"><b>Over budget this month</b><div style="font-size:14px">' + overs.map(function(c){ return esc(c.name) + ' (+' + fmt(spent(c.name, m) - c.monthly) + ')'; }).join(', ') + '</div></div></div>';
+  if (overs.length) h += '<div class="banner"><div style="flex:1"><b>Over budget this month</b><div style="font-size:14px">' + overs.map(function(c){ return '<button class="link" style="height:auto;padding:2px 0;color:var(--warmink);text-decoration:underline" data-act="cat-hist" data-cat="' + esc(c.name) + '">' + esc(c.name) + ' (+' + fmt(spent(c.name, m) - c.monthly) + ')</button>'; }).join(', ') + '</div></div></div>';
   // due this month
   var ab = monthAbbr(m), yr = m.slice(0, 4);
   D.cats.filter(function(c){ return c.kind === 'Yearly' && c.due.indexOf(ab) >= 0; }).forEach(function(c){
@@ -445,24 +600,38 @@ function homeHtml(){
     h += '<div class="sec"><h2>Regular monthly expenses</h2><div class="sub">Spent of planned</div></div>';
     D.cats.filter(function(c){ return c.section === 'Regular' && c.kind === 'Monthly'; }).forEach(function(c){ h += catCard(c, m); });
   } else if (S.part === 'loans') {
-    h += '<div class="sec"><h2>Loan EMIs</h2><div class="sub">' + fmt(emi) + ' this month</div></div>';
-    D.cats.filter(function(c){ return c.kind === 'EMI' && active(c, m); }).forEach(function(c){
-      var paid = spent(c.name, m);
-      h += '<div class="card" style="display:flex;flex-direction:column;gap:6px"><div class="row"><div style="font-size:15px;font-weight:600">' + esc(c.name) + '</div><span class="tag ' + (paid >= c.monthly ? '' : 'due') + '">' + (paid >= c.monthly ? 'Paid' : 'Due') + '</span></div>' +
-        '<div class="row small"><div>' + fmt(c.monthly) + ' EMI' + (c.notes ? ' · ' + esc(c.notes) : '') + '</div>' + (paid >= c.monthly ? '' : '<button class="link" data-act="add" data-cat="' + esc(c.name) + '" data-amt="' + c.monthly + '">Mark paid</button>') + '</div></div>';
+    var cur = D.today.slice(0, 7);
+    h += '<div class="sec"><h2>Loans</h2><div class="sub">EMIs ' + fmt(emi) + ' this month · tap to edit</div></div>';
+    D.loans.forEach(function(l){
+      if (!l.name) return;
+      var li = loanInfo(l), closed = li.bal <= 0 && (li.emi > 0 || /sbi gold/i.test(l.name));
+      var status = '';
+      if (closed) status = '<span class="tag">Closed</span>';
+      else if (li.emiCat && m === cur) status = li.paidNow ? '<span class="tag">Paid</span>' : (daysTo(li.dueDate) < 0 ? '<span class="tag due" style="background:#FDECEA;color:#B42318">Overdue</span>' : '<span class="tag due">Due ' + Number(li.dueDate.slice(8)) + ' ' + MON[Number(li.dueDate.slice(5, 7)) - 1] + '</span>');
+      else if (l.renewal) status = '<span class="tag">Renews ' + esc(l.renewal) + '</span>';
+      var paidOff = li.start > 0 ? Math.min(100, Math.round((li.start - li.bal) / li.start * 100)) : 0;
+      h += '<div class="card" data-act="loan" data-row="' + l.row + '" role="button" tabindex="0" style="display:flex;flex-direction:column;gap:6px;cursor:pointer"><div class="row"><div style="font-size:15px;font-weight:600">' + esc(l.name) + ' <span class="sub" style="font-weight:400">›</span></div>' + status + '</div>' +
+        '<div class="row"><div><div class="sub">Balance now</div><div class="big">' + fmt(li.bal) + '</div></div>' + (li.emi ? '<div style="text-align:right"><div class="sub">EMI</div><div class="big">' + fmt(li.emi) + '</div></div>' : (l.renewal ? '<div style="text-align:right"><div class="sub">Interest/yr</div><div class="big">' + fmt(l.outstanding * l.rate) + '</div></div>' : '')) + '</div>' +
+        (li.emi && li.bal > 0 ? '<div class="small">' + li.left + ' EMIs left · ends ' + dueLabel(li.end) + (l.rate ? ' · ' + (l.rate * 100).toFixed(2) + '%' : '') + '</div>' : '') +
+        (li.emi ? barHtml(li.start - li.bal, li.start) + '<div class="sub">' + paidOff + '% paid off since ' + dueLabel(l.asOf || '2026-11') + '</div>' : '') +
+        (li.unrecorded ? '<div class="sub" style="color:var(--warmink)">' + li.unrecorded + ' past EMI' + (li.unrecorded > 1 ? 's' : '') + ' not recorded; assumed paid</div>' : '') +
+        (li.emiCat && !li.paidNow && m === cur && li.bal > 0 ? '<button class="link" style="align-self:flex-start;margin-left:-8px" data-act="add" data-cat="' + esc(li.emiCat) + '" data-amt="' + li.emi + '">Mark this month paid</button>' : '') + '</div>';
     });
-    h += '<div class="sec"><h2>Loan balances</h2><div class="sub">Tap to update</div></div><div class="card" style="padding:4px 16px">';
-    D.loans.forEach(function(l){ if (!l.name) return; h += '<button class="setting" data-act="loan" data-row="' + l.row + '"><span>' + esc(l.name) + '<span class="sub" style="display:block">' + (l.rate ? (l.rate * 100).toFixed(2) + '% · ' : '') + (l.renewal ? 'renews ' + esc(l.renewal) : esc(l.notes)) + '</span></span><b>' + short(l.outstanding) + '</b></button>'; });
-    h += '</div>';
   } else {
     h += '<div class="sec"><h2>Occasional expenses</h2><div class="sub">Spent of planned</div></div>';
     D.cats.filter(function(c){ return c.section.indexOf('Occasional') >= 0 && c.kind === 'Monthly'; }).forEach(function(c){ h += catCard(c, m); });
     h += '<div class="sec"><h2>Medical</h2><div class="sub">Spent of planned</div></div>';
     D.cats.filter(function(c){ return c.section.indexOf('Medical') >= 0 && c.kind === 'Monthly'; }).forEach(function(c){ h += catCard(c, m); });
     h += '<h2 style="margin:4px 4px 0">Insurance covers</h2><div class="card" style="padding:4px 16px">';
-    D.cats.filter(function(c){ return c.kind === 'Yearly' && /insurance|policy|term/i.test(c.name); }).forEach(function(c){
-      var paid = paidYear(c.name, yr) >= c.yearly;
-      h += '<div class="li"><div class="mon">' + esc((c.due || '').slice(0, 3).toUpperCase()) + '</div><div style="flex:1;font-size:14px">' + esc(c.name) + '<div class="sub">' + (paid ? 'Paid for ' + yr : 'Due') + '</div></div><b style="font-size:14px">' + fmt(c.yearly) + '</b></div>';
+    D.cats.filter(function(c){ return c.kind === 'Yearly' && /insurance|policy|term/i.test(c.name); })
+      .map(function(c){ return { c: c, key: nextDue((c.due || 'Jan').slice(0, 3), m) }; })
+      .sort(function(a, b){ return a.key < b.key ? -1 : a.key > b.key ? 1 : 0; })
+      .forEach(function(x){
+      var c = x.c, label = dueLabel(x.key), pe = duePaid(c.name, x.key, label), now = x.key === m;
+      var amt = Math.round(c.yearly / Math.max(1, (c.due || '').split(',').length));
+      var st = pe ? '<span style="color:var(--teal);font-weight:600">✓ Paid ' + fmt(pe.amt) + ' on ' + pe.date.slice(8) + ' ' + MON[Number(pe.date.slice(5, 7)) - 1] + '</span>' : (now ? '<span style="color:var(--warmink);font-weight:600">Due this month · tap to pay</span>' : 'Due ' + label + ' · tap to pay');
+      h += '<button class="li" data-act="pay-due" data-cat="' + esc(c.name) + '" data-amt="' + amt + '" data-label="' + label + '" data-key="' + x.key + '" style="width:100%;border:0;border-bottom:1px solid #EEF2F0;background:transparent;text-align:left;cursor:pointer;font:inherit;color:inherit">' +
+        '<div class="mon ' + (now && !pe ? 'now' : '') + '">' + esc((c.due || '').slice(0, 3).toUpperCase()) + '</div><div style="flex:1;font-size:14px">' + esc(c.name) + '<div class="sub">' + st + '</div></div><b style="font-size:14px">' + fmt(amt) + '</b></button>';
     });
     h += '</div>';
   }
@@ -524,10 +693,17 @@ function plannerHtml(){
 
   // funds & goals
   h += '<h2 style="margin:4px 4px 0">Funds &amp; goals</h2>';
+  var axNow = axisBalNow(), axLoan = loanByName(/axis/i);
   [['Emergency fund', 0], ['Axis closure fund', 1]].forEach(function(g){
     var pv = D.planner[g[1]] || { start: 0, target: 0 }, have = pv.start + allTime(g[0]);
+    if (g[1] === 1 && axLoan) {
+      pv = { start: pv.start, target: axNow };
+      if (axNow <= 0) { h += '<div class="card small">Axis loan closed. 🎉</div>'; return; }
+      if (have >= axNow) h += '<div class="banner" style="background:var(--tint);border-color:#9FD8CF"><div style="flex:1"><b style="color:#0B5E57">Ready to close Axis ✓</b><div style="font-size:14px">Fund ' + fmt(have) + ' covers the balance ' + fmt(axNow) + '. Ask Axis for the foreclosure letter, pay, then update the loan balance to 0.</div></div></div>';
+    }
     h += '<div class="card" style="display:flex;flex-direction:column;gap:8px"><div class="row"><div style="font-size:15px;font-weight:600">' + g[0] + '</div><div><button class="link" data-act="fund" data-i="' + g[1] + '">Edit</button><button class="plus" data-act="add" data-cat="' + g[0] + '" aria-label="Add to ' + g[0] + '">+</button></div></div>' +
-      '<div class="row small"><div><b style="color:var(--ink)">' + fmt(have) + '</b> of ' + fmt(pv.target) + '</div><div>' + pct(have, pv.target) + '%</div></div>' + barHtml(have, pv.target) + '</div>';
+      '<div class="row small"><div><b style="color:var(--ink)">' + fmt(have) + '</b> of ' + fmt(pv.target) + '</div><div>' + Math.min(100, pct(have, pv.target)) + '%</div></div>' + barHtml(have, pv.target) +
+      (g[1] === 1 && axLoan ? '<div class="sub">Target = Axis balance today; it falls every month as EMIs are paid.</div>' : '') + '</div>';
   });
 
   // private income
@@ -543,8 +719,17 @@ function goalsHtml(){
   var achBy = function(g, yy){ return sum(D.entries.filter(function(e){ return e.year === yy && groupOf(e.cat) === g; }), function(e){ return e.amt; }); };
   var totT = sum(tg), totA = sum(GROUPS, function(g){ return achBy(g, y); });
   var h = '<div class="chips" role="group" aria-label="Year">' + YEARS.map(function(v){ return '<button class="chip ' + (v === y ? 'on' : '') + '" data-act="year" data-v="' + v + '" aria-pressed="' + (v === y) + '">' + (v === '2026' ? 'Dec 2026' : v) + '</button>'; }).join('') + '</div>';
-  h += '<div class="hero"><div class="lab">Total target for ' + (y === '2026' ? 'Dec 2026' : y) + '</div><div style="font-size:26px;font-weight:700">' + fmt(totT) + '</div><div class="grid2" style="font-size:12px;color:#D5F0EC"><div>Achieved<div style="font-size:15px;font-weight:700;color:#fff">' + fmt(totA) + '</div></div><div>Still to save<div style="font-size:15px;font-weight:700;color:#fff">' + fmt(Math.max(0, totT - totA)) + '</div></div></div>' +
-    '<div class="bar" style="background:#2C8E86"><i style="background:#fff;width:' + Math.min(100, pct(totA, totT)) + '%"></i></div></div>';
+  var cy = D.today.slice(0, 4), cmi = Number(D.today.slice(5, 7)), mLeft, elapsed;
+  if (y === '2026') { elapsed = D.today >= '2027-01-01' ? 100 : (D.today >= '2026-12-01' ? Math.round(Number(D.today.slice(8)) / 31 * 100) : 0); mLeft = D.today < '2027-01-01' ? 1 : 0; }
+  else if (y < cy) { elapsed = 100; mLeft = 0; } else if (y > cy) { elapsed = 0; mLeft = 12; }
+  else { elapsed = Math.round(((cmi - 1) + Number(D.today.slice(8)) / 31) / 12 * 100); mLeft = 12 - cmi + 1; }
+  var pA = totT ? Math.min(100, pct(totA, totT)) : 0, togo = Math.max(0, totT - totA);
+  var st = !totT ? 'No target set' : totA >= totT ? 'Target reached ✓' : elapsed === 0 ? 'Not started yet' : pA >= elapsed ? 'On track' : pA >= elapsed - 10 ? 'Slightly behind' : 'Behind';
+  var stCol = /reached|On track/.test(st) ? '#9FE0D6' : /Slightly/.test(st) ? '#FDE68A' : /Behind/.test(st) ? '#FDBA74' : '#D5F0EC';
+  h += '<div class="hero"><div class="row"><div class="lab">Total target for ' + (y === '2026' ? 'Dec 2026' : y) + '</div><div style="font-size:13px;font-weight:700;color:' + stCol + '">' + st + '</div></div><div style="font-size:26px;font-weight:700">' + fmt(totT) + '</div>' +
+    '<div class="grid2" style="font-size:12px;color:#D5F0EC"><div>Achieved<div style="font-size:15px;font-weight:700;color:#fff">' + fmt(totA) + ' · ' + pA + '%</div></div><div>Still to save<div style="font-size:15px;font-weight:700;color:#fff">' + fmt(togo) + '</div></div></div>' +
+    '<div class="bar" style="background:#2C8E86"><i style="background:#fff;width:' + pA + '%"></i></div>' +
+    '<div style="font-size:12px;color:#E6F7F4">' + (elapsed > 0 && elapsed < 100 ? elapsed + '% of the period gone · ' : '') + (togo > 0 && mLeft > 0 ? 'need ' + fmt(Math.ceil(togo / mLeft)) + ' a month for the remaining ' + mLeft + ' month' + (mLeft > 1 ? 's' : '') : (togo > 0 ? 'period over' : 'well done')) + '</div></div>';
   h += '<div class="sec" style="align-items:center"><h2>' + (y === '2026' ? 'Dec 2026' : y) + ' targets</h2><button class="link" data-act="targets">Edit targets</button></div>';
   GROUPS.forEach(function(g, gi){
     var a = achBy(g, y), t = tg[gi], info = GROUP_INFO[g];
@@ -563,14 +748,7 @@ function goalsHtml(){
   // chain
   h += '<h2 style="margin:4px 4px 0">RD → FD → Gold chain</h2><div class="card" style="display:flex;flex-direction:column;gap:10px"><div class="small">When an RD matures, move it to FD. When an FD matures, move it to gold. Nothing is counted twice.</div>' +
     '<button class="btn ghost" data-act="move" data-from="RD" data-to="FD">Move RD → FD</button><button class="btn plain" data-act="move" data-from="FD" data-to="Gold">Move FD → Gold</button></div>';
-  // 5-year
-  var all5 = sum(GROUPS, function(g){ return sum(YEARS, function(yy){ return achBy(g, yy); }); });
-  h += '<h2 style="margin:4px 4px 0">Total (Dec 2026 – 2031)</h2><div class="dark"><div class="row"><div style="font-size:13px;color:#C9D3CF">Total target</div><div style="font-size:13px;font-weight:600;color:#9FE0D6">' + pct(all5, gT) + '% achieved</div></div>' +
-    '<div style="font-size:28px;font-weight:700">' + fmt(gT) + '</div><div class="bar" style="background:#34403C;height:10px"><i style="background:#2DD4BF;width:' + Math.min(100, pct(all5, gT)) + '%"></i></div>' +
-    '<div class="grid2" style="font-size:12px;color:#C9D3CF"><div>Achieved so far<div style="font-size:16px;font-weight:700;color:#fff">' + fmt(all5) + '</div></div><div>Still to save<div style="font-size:16px;font-weight:700;color:#fff">' + fmt(Math.max(0, gT - all5)) + '</div></div></div>' +
-    '<div class="grid3" style="border-top:1px solid #34403C;padding-top:10px;font-size:12px;color:#C9D3CF">' + GROUPS.map(function(g, gi){
-      var t5 = sum(YEARS, function(yy, i){ return (D.targets[i] || [])[gi] || 0; }), a5 = sum(YEARS, function(yy){ return achBy(g, yy); });
-      return '<div>' + g + '<div style="font-size:13px;font-weight:600;color:#fff">' + short(a5) + ' of ' + short(t5) + '</div></div>'; }).join('') + '</div></div>';
+  h += '<button class="link" data-act="plan" style="align-self:flex-start">See 2031 totals in Family plan ›</button>';
   return h;
 }
 
@@ -579,6 +757,8 @@ function moreHtml(){
     '<button class="btn" data-act="pdf">Download PDF</button><button class="btn ghost" data-act="excel">Download Excel</button><button class="btn plain" data-act="sheet">Open Google Sheet</button></div>';
   h += '<div class="card" style="padding:4px 16px">' + [
     ['plan', 'Family plan', 'Milestones, plan vs actual, 2031 projection'],
+    ['upcoming', 'Upcoming payments', 'EMIs, premiums, renewals and card bills – next 90 days'],
+    ['cards', 'Credit card bills', 'Dues from statement emails, mark paid'],
     ['transfers', 'Salary transfers', 'Where each salary goes every month'],
     ['salary-day', 'Salary day quick add', 'Add all fixed monthly entries in one go'],
     ['recent', 'Recent entries', 'See, check or delete entries'],
@@ -629,7 +809,7 @@ function needPin(next){ if (!D.pinSet || S.unlocked) next(); else pinModal(next)
 function catForm(c){
   c = c || { row: '', section: 'Regular', name: '', kind: 'Monthly', monthly: '', yearly: '', due: '', start: '', end: '', group: '', notes: '' };
   var sections = []; D.cats.forEach(function(x){ if (sections.indexOf(x.section) < 0) sections.push(x.section); });
-  var kinds = ['Monthly', 'EMI', 'Set-aside', 'Saving', 'Yearly', 'Investment', 'Income', 'Renewal'];
+  var kinds = ['Monthly', 'EMI', 'Set-aside', 'Saving', 'Yearly', 'Investment', 'Income', 'Renewal', 'Transfer'];
   openModal(head(c.row ? 'Edit category' : 'New category') +
     '<input type="hidden" id="c-row" value="' + c.row + '">' +
     '<label>Name<input id="c-name" value="' + esc(c.name) + '"></label>' +
@@ -641,6 +821,7 @@ function catForm(c){
     '<label>Due months (e.g. Jul, Oct)<input id="c-due" value="' + esc(c.due) + '"></label>' +
     '<div class="grid2"><label>Start (yyyy-mm)<input id="c-start" value="' + esc(c.start) + '" placeholder="optional"></label><label>End (yyyy-mm)<input id="c-end" value="' + esc(c.end) + '" placeholder="optional"></label></div>' +
     '<label>Savings target group<select id="c-group"><option value="">None</option>' + GROUPS.map(function(g){ return '<option' + (g === c.group ? ' selected' : '') + '>' + g + '</option>'; }).join('') + '</select></label>' +
+    '<label>Due day of month (1–28, for reminders)<input id="c-dueday" type="number" inputmode="numeric" min="1" max="28" value="' + (c.dueDay || '') + '"></label>' +
     '<label>Notes<input id="c-notes" value="' + esc(c.notes) + '"></label>' +
     '<button class="btn" data-act="save-cat">Save category</button>' + (c.row ? '<button class="btn danger" data-act="del-cat" data-row="' + c.row + '">Delete category</button>' : ''));
 }
@@ -666,7 +847,7 @@ function recentModal(){
   list.forEach(function(e){
     var income = kindOf(e.cat) === 'Income';
     if (income && !S.showMoney) return;
-    h += '<div class="li"><div style="flex:1"><div style="font-size:14px;font-weight:600">' + esc(e.cat) + ' · ' + fmt(e.amt) + '</div><div class="sub">' + e.date + ' · ' + esc(e.by) + (e.note ? ' · ' + esc(e.note) : '') + '</div></div><button class="link" style="color:#B42318" data-act="del-entry" data-row="' + e.row + '">Delete</button></div>';
+    h += '<div class="li"><div style="flex:1"><div style="font-size:14px;font-weight:600">' + esc(e.cat) + ' · ' + fmt(e.amt) + '</div><div class="sub">' + e.date + ' · ' + esc(e.by) + (e.note ? ' · ' + esc(e.note) : '') + '</div></div><button class="link" data-act="edit-entry" data-row="' + e.row + '">Edit</button><button class="link" style="color:#B42318" data-act="del-entry" data-row="' + e.row + '">Delete</button></div>';
   });
   openModal(h + (S.showMoney ? '' : '<div class="small">Income entries are hidden until you tap Show on the Planner page.</div>'));
 }
@@ -690,6 +871,15 @@ document.addEventListener('click', function(ev){
   if (a === 'connection') { if (confirm('Change the app link, key or user on this phone?')) { closeModal(); setupScreen(); } return; }
   if (!D) return;
   if (a === 'add') { addModal({ cat: t.dataset.cat, group: t.dataset.group, amt: t.dataset.amt }); return; }
+  if (a === 'cat-hist') { catHistModal(t.dataset.cat); return; }
+  if (a === 'edit-entry') { editModal(Number(t.dataset.row)); return; }
+  if (a === 'save-edit') {
+    var ed = { cat: $('f-cat').value, amt: Number($('f-amt').value), date: $('f-date').value, note: $('f-note').value };
+    if (!ed.amt) { toast('Enter an amount'); return; }
+    call('updateEntry', [S._editRow, ed], 'Saving…', function(d){ setData(d); toast('Entry updated'); });
+    return;
+  }
+  if (a === 'goto-month') { S.month = t.dataset.v; S.tab = 'planner'; render(); $('main').scrollTop = 0; return; }
   if (a === 'pay-due') {
     var ex = t.dataset.note ? null : duePaid(t.dataset.cat, t.dataset.key, t.dataset.label);
     if (ex) { toast('Already paid on ' + ex.date + '. Delete it in More › Recent entries to change it.'); return; }
@@ -760,13 +950,32 @@ document.addEventListener('click', function(ev){
     return;
   }
   if (a === 'save-fund') { call('saveFundStart', [S._fund, $('fu-start').value, $('fu-target').value], 'Saving…', setData); return; }
-  if (a === 'loan') {
-    var row = Number(t.dataset.row), l = D.loans.filter(function(x){ return x.row === row; })[0];
-    S._loan = row;
-    openModal(head(esc(l.name)) + '<label>Outstanding now (₹)<input id="lo-amt" type="number" inputmode="decimal" value="' + l.outstanding + '"></label><button class="btn" data-act="save-loan">Save</button>');
+  if (a === 'loan') { loanForm(Number(t.dataset.row)); return; }
+  if (a === 'save-loan') {
+    var asof = $('lo-asof').value.trim();
+    if (!/^\d{4}-\d{2}$/.test(asof)) { toast('Balance month must look like 2026-11'); return; }
+    call('saveLoan', [S._loan, { outstanding: $('lo-amt').value, asOf: asof, rate: (Number($('lo-rate').value) || 0) / 100, emi: $('lo-emi').value, emiCat: $('lo-cat').value, renewal: $('lo-ren').value.trim() }], 'Saving…', function(d){ setData(d); toast('Loan saved'); });
     return;
   }
-  if (a === 'save-loan') { call('saveLoanOutstanding', [S._loan, $('lo-amt').value], 'Saving…', setData); return; }
+  if (a === 'upcoming') { upcomingModal(); return; }
+  if (a === 'up-pay') {
+    var x = (S._up || [])[Number(t.dataset.i)]; if (!x) return;
+    if (x.type === 'Card') { call('setCardPaid', [x.id, true], 'Saving…', function(d){ setData(d); toast('Card bill marked paid'); }); return; }
+    if (x.type === 'EMI') { addModal({ cat: x.cat, amt: x.amt }); return; }
+    if (x.type === 'Renewal') { addModal({ cat: x.cat, amt: x.amt, note: x.note }); return; }
+    addModal({ cat: x.cat, amt: x.amt, note: 'For ' + x.label }); return;
+  }
+  if (a === 'cards') { cardsModal(); return; }
+  if (a === 'cards-scan') { call('scanCardsNow', [], 'Checking email…', function(d){ setData(d); cardsModal(); toast('Email checked'); }); return; }
+  if (a === 'card-paid') { var cd0 = (D.cards || []).filter(function(x){ return x.id === t.dataset.id; })[0]; call('setCardPaid', [t.dataset.id, !(cd0 && cd0.paid)], 'Saving…', function(d){ setData(d); cardsModal(); }); return; }
+  if (a === 'card-edit') { cardForm(t.dataset.id); return; }
+  if (a === 'card-del') { if (confirm('Delete this card bill?')) call('deleteCard', [t.dataset.id], 'Deleting…', function(d){ setData(d); cardsModal(); }); return; }
+  if (a === 'card-save') {
+    var cdn = { id: S._card.id, card: $('cd-name').value.trim(), amount: $('cd-amt').value, due: $('cd-due').value, paid: S._card.paid, src: S._card.src };
+    if (!cdn.card || !cdn.due) { toast('Enter card name and due date'); return; }
+    call('saveCard', [cdn], 'Saving…', function(d){ setData(d); cardsModal(); toast('Card bill saved'); });
+    return;
+  }
   if (a === 'pdf') { call('makePdf', [S.month], 'Making PDF…', download); return; }
   if (a === 'excel') { call('makeExcel', [], 'Preparing Excel…', download); return; }
   if (a === 'sheet') { window.open(D.sheetUrl, '_blank'); return; }
@@ -798,12 +1007,12 @@ document.addEventListener('click', function(ev){
     return;
   }
   if (a === 'recent') { recentModal(); return; }
-  if (a === 'del-entry') { if (confirm('Delete this entry?')) call('deleteEntry', [t.dataset.row], 'Deleting…', function(d){ setData(d); recentModal(); }); return; }
+  if (a === 'del-entry') { var back = t.dataset.back; if (confirm('Delete this entry?')) call('deleteEntry', [t.dataset.row], 'Deleting…', function(d){ setData(d); if (back) catHistModal(back); else recentModal(); }); return; }
   if (a === 'cats') { catsModal(); return; }
   if (a === 'new-cat') { catForm(null); return; }
   if (a === 'edit-cat') { var r = Number(t.dataset.row); catForm(D.cats.filter(function(c){ return c.row === r; })[0]); return; }
   if (a === 'save-cat') {
-    var c = { row: $('c-row').value, name: $('c-name').value.trim(), section: $('c-section').value.trim(), kind: $('c-kind').value, monthly: $('c-monthly').value, yearly: $('c-yearly').value, due: $('c-due').value.trim(), start: $('c-start').value.trim(), end: $('c-end').value.trim(), group: $('c-group').value, notes: $('c-notes').value };
+    var c = { row: $('c-row').value, name: $('c-name').value.trim(), section: $('c-section').value.trim(), kind: $('c-kind').value, monthly: $('c-monthly').value, yearly: $('c-yearly').value, due: $('c-due').value.trim(), start: $('c-start').value.trim(), end: $('c-end').value.trim(), group: $('c-group').value, notes: $('c-notes').value, dueDay: $('c-dueday').value };
     if (!c.name || !c.section) { toast('Enter a name and section'); return; }
     call('saveCategory', [c], 'Saving…', function(d){ setData(d); toast('Category saved'); });
     return;
@@ -817,6 +1026,9 @@ document.addEventListener('click', function(ev){
   if (a === 'save-pin') { call('setPin', [D.pinSet ? $('p-old').value : '', $('p-new').value], 'Saving…', function(){ D.pinSet = true; S.unlocked = true; closeModal(); render(); toast('PIN saved'); }); return; }
   if (a === 'reminders') { openModal(head('Reminders') + '<div class="small">Phone calendar reminders at 8:00 AM and 8:00 PM every day.<br><br>If nobody adds an entry by about 9:30 PM, both of you get an email.<br><br>The Home page also shows how many days since the last entry.</div>'); return; }
   if (a === 'refresh') { load(); return; }
+});
+document.addEventListener('keydown', function(ev){
+  if ((ev.key === 'Enter' || ev.key === ' ') && ev.target.matches && ev.target.matches('[role="button"][data-act]')) { ev.preventDefault(); ev.target.click(); }
 });
 $('monthSel').addEventListener('change', function(){ S.month = this.value; render(); });
 loadCfg();
